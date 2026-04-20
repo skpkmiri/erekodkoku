@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eKOKU LIVE - SKPK MIRI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel untuk terjemah JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @media print { 
+            .print\:hidden { display: none !important; } 
+            body { background: white !important; padding: 0 !important; margin: 0 !important; } 
+            @page { size: A4 portrait; margin: 10mm; }
+            .break-inside-avoid { page-break-inside: avoid; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="root">
+        <div class="h-screen flex items-center justify-center bg-slate-900 text-white font-bold">
+            <div class="text-center">
+                <div class="text-4xl mb-4 animate-bounce">🚀</div>
+                <p class="tracking-widest uppercase text-xs">Menyambung ke Cloud Firebase...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
+        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
+
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // =====================================================================
+        // KONFIGURASI PANGKALAN DATA FIREBASE (RASMI SKPK MIRI)
+        // =====================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDXh_xTy18MAeWNex2pAbxIU1GmPKFo2pg",
+            authDomain: "ekoku-skpk-miri.firebaseapp.com",
+            projectId: "ekoku-skpk-miri",
+            storageBucket: "ekoku-skpk-miri.firebasestorage.app",
+            messagingSenderId: "207059132138",
+            appId: "1:207059132138:web:a36f8d2ce00d91806bc193",
+            measurementId: "G-4FYQE25KRK"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'ekoku-skpk-miri';
+
+        // --- ICONS ---
+        const Icons = {
+            PenTool: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>,
+            Users: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
+            ClipboardList: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M12 11h4"></path><path d="M12 16h4"></path><path d="M8 11h.01"></path><path d="M8 16h.01"></path></svg>,
+            Archive: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>,
+            PieChart: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>,
+            Printer: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>,
+            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        };
+
+        // --- UTILS ---
+        const compressImage = (base64Str, maxWidth = 600) => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = base64Str;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const scale = maxWidth / img.width;
+                    canvas.width = maxWidth;
+                    canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6));
+                };
+            });
+        };
+
+        const parseCSV = (str) => {
+            if (!str) return [];
+            const arr = [];
+            let quote = false;
+            let row = 0, col = 0, c = 0;
+            for (; c < str.length; c++) {
+                let cc = str[c], nc = str[c+1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+                if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc == '"') { quote = !quote; continue; }
+                if (cc == ',' && !quote) { ++col; continue; }
+                if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr;
+        };
+
+        const fetchCSVData = async (rawUrl) => {
+            if (!rawUrl) return null;
+            const url = rawUrl.trim();
+            const proxies = [
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                url
+            ];
+            for (let proxy of proxies) {
+                try {
+                    const res = await fetch(proxy);
+                    if (res.ok) {
+                        const text = await res.text();
+                        if (text && !text.trim().startsWith('<!doctype')) return text;
+                    }
+                } catch (e) { console.warn("Proxy failed..."); }
+            }
+            throw new Error('Gagal muat turun data dari Google Sheets.');
+        };
+
+        // --- MAIN APP ---
+        function App() {
+            const [user, setUser] = useState(null);
+            const [currentView, setCurrentView] = useState('laporan_baru');
+            const [toast, setToast] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+            const [reports, setReports] = useState([]);
+            const [attendanceRecords, setAttendanceRecords] = useState([]);
+
+            const [students, setStudents] = useState([]);
+            const [teachers, setTeachers] = useState([]);
+            const [activities, setActivities] = useState(['MENGAMBIL DATA...']);
+            const [csvLinkMurid, setCsvLinkMurid] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vRyXz6iABc4zz0gpRMqo0xgzZtUmw9BSwkrbYq2Mc0c0hcnwg-pZTIm9XE1S2g5B_4wnblhRSAiO28V/pub?gid=0&single=true&output=csv');
+            const [csvLinkGuru, setCsvLinkGuru] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vRyXz6iABc4zz0gpRMqo0xgzZtUmw9BSwkrbYq2Mc0c0hcnwg-pZTIm9XE1S2g5B_4wnblhRSAiO28V/pub?gid=33896881&single=true&output=csv');
+
+            const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+            useEffect(() => {
+                const initAuth = async () => {
+                    try { await signInAnonymously(auth); } catch (e) { console.error(e); }
+                };
+                initAuth();
+                const unsubscribe = onAuthStateChanged(auth, u => { setUser(u); if (u) setIsLoading(false); });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), d => {
+                    if (d.exists()) {
+                        const data = d.data();
+                        if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid);
+                        if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru);
+                    }
+                });
+                const unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
+                    setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                });
+                const unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
+                    setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                });
+                return () => { unsubConfig(); unsubReports(); unsubAttendance(); };
+            }, [user]);
+
+            useEffect(() => {
+                const syncData = async () => {
+                    try {
+                        const mText = await fetchCSVData(csvLinkMurid);
+                        const mRows = parseCSV(mText);
+                        let sList = []; let aSet = new Set();
+                        for (let i = 1; i < mRows.length; i++) {
+                            const name = (mRows[i][0] || '').trim();
+                            const act1 = (mRows[i][1] || '').trim().toUpperCase();
+                            const act2 = (mRows[i][2] || '').trim().toUpperCase();
+                            const act3 = (mRows[i][3] || '').trim().toUpperCase();
+                            if (name && name.toLowerCase() !== 'nama murid') {
+                                sList.push({ id: `S${i}`, name, act1, act2, act3 });
+                                if (act1 && act1 !== '-') aSet.add(act1);
+                                if (act2 && act2 !== '-') aSet.add(act2);
+                                if (act3 && act3 !== '-') aSet.add(act3);
+                            }
+                        }
+                        setStudents(sList.sort((a,b) => a.name.localeCompare(b.name)));
+                        if (aSet.size > 0) setActivities(Array.from(aSet).sort());
+
+                        const gText = await fetchCSVData(csvLinkGuru);
+                        const gRows = parseCSV(gText);
+                        let gList = [];
+                        for (let i = 1; i < gRows.length; i++) {
+                            const name = (gRows[i][0] || '').trim().toUpperCase();
+                            if (name && name !== 'NAMA GURU') gList.push(name);
+                        }
+                        setTeachers(gList.sort());
+                    } catch (e) { console.error(e); }
+                };
+                syncData();
+            }, [csvLinkMurid, csvLinkGuru]);
+
+            // --- BORANG LAPORAN ASAL ---
+            const LaporanForm = () => {
+                const [form, setForm] = useState({
+                    perjumpaan: '1', unit: activities[0] || '', tarikh: '', tajuk: '', aktiviti: '', 
+                    laporanMurid: null, rumusan: '', kemahiranBerfikir: '', 
+                    kataKerjaKbat: '', ulasanKbat: '', disediakanOleh: '', namaDisediakan: '', 
+                    ulasan1: '', ulasan2: '', ulasan3: '', ulasan4: '', ulasan5: '', ulasan6: '',
+                    gambar1: null, gambar2: null, gambar3: null, gambar4: null, gambar5: null, gambar6: null
+                });
+
+                const KEMAHIRAN_BERFIKIR_OPTS = ['', '1. MENGAPLIKASI', '2. MENGANALISIS', '3. MENILAI', '4. MENCIPTA'];
+                const KATA_KERJA_KBAT_OPTS = [
+                    '', '1. MENUNJUKKAN', '1. MENGAPLIKASI', '1. MENGGUNA', '1. MELENGKAP', '1. MEMBINA', '1. MENGHASIL',
+                    '2. MENGKATEGORI', '2. MENGUJI', '2. MEMBEZAKAN', '2. MEMBANDING', '2. MENTAFSIR',
+                    '3. MEMBUAT KEPUTUSAN', '3. MEMILIH', '3. MENENTUKAN', '3. MENCADANG', '3. MEMBAHAS', '3. MENILAI', '3. MEMBERI ALASAN',
+                    '4. MENCIPTA', '4. MERANCANG', '4. MENGUBAH', '4. MEREKA BENTUK', '4. MELAKAR', '4. MENGHASILKAN'
+                ];
+
+                const handleFile = async (e, field) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                            const compressed = await compressImage(event.target.result);
+                            setForm(prev => ({ ...prev, [field]: compressed }));
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    try {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), {
+                            ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null
+                        });
+                        showToast('Laporan berjaya disimpan!');
+                        setCurrentView('rekod_laporan');
+                    } catch (err) { showToast('Ralat simpan data.'); }
+                };
+
+                const ImageUpload = ({ label, field }) => (
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">{label}</label>
+                        {form[field] ? (
+                            <div className="relative group">
+                                <img src={form[field]} className="h-32 w-full object-cover rounded-lg border shadow-sm" alt="Preview" />
+                                <button type="button" onClick={() => setForm({...form, [field]: null})} className="absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs shadow-md">X</button>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition">
+                                <span className="text-xl">📷</span>
+                                <span className="text-[10px] text-slate-400 mt-1 uppercase font-bold text-center px-2">Klik Pilih Gambar</span>
+                                <input type="file" accept="image/*" className="hidden" onChange={e => handleFile(e, field)} />
+                            </label>
+                        )}
+                    </div>
+                );
+
+                return (
+                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100">
+                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.PenTool /> Daftar Laporan Mingguan</h2>
+                        <form onSubmit={handleSubmit} className="space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Perjumpaan</label>
+                                    <select className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.perjumpaan} onChange={e => setForm({...form, perjumpaan: e.target.value})}>
+                                        {Array.from({length: 20}, (_, i) => i + 1).map(num => <option key={num} value={num}>{num}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Unit Kokurikulum</label>
+                                    <select className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}>
+                                        {activities.map(act => <option key={act} value={act}>{act}</option>)}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tarikh*</label>
+                                    <input type="date" required className="w-full p-3 border rounded-lg outline-none bg-white" value={form.tarikh} onChange={e => setForm({...form, tarikh: e.target.value})} />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tajuk Aktiviti*</label>
+                                    <input type="text" required className="w-full p-3 border rounded-lg outline-none bg-white" placeholder="Contoh: Latihan Kawad Kaki" value={form.tajuk} onChange={e => setForm({...form, tajuk: e.target.value})} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Huraian Aktiviti*</label>
+                                    <textarea rows="4" required className="w-full p-3 border rounded-lg outline-none bg-slate-50 focus:bg-white transition" value={form.aktiviti} onChange={e => setForm({...form, aktiviti: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Rumusan / Refleksi*</label>
+                                    <textarea rows="3" required className="w-full p-3 border rounded-lg outline-none bg-slate-50 focus:bg-white transition" value={form.rumusan} onChange={e => setForm({...form, rumusan: e.target.value})} />
+                                </div>
+                            </div>
+
+                            <ImageUpload label="Laporan Murid (Lampiran)" field="laporanMurid" />
+
+                            <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-4">
+                                <h3 className="font-bold text-blue-900 text-xs uppercase tracking-widest">Elemen KBAT</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <select required className="p-3 border rounded-lg bg-white text-sm font-bold" value={form.kemahiranBerfikir} onChange={e => setForm({...form, kemahiranBerfikir: e.target.value})}>
+                                        {KEMAHIRAN_BERFIKIR_OPTS.map(opt => <option key={opt} value={opt}>{opt || 'Sila Pilih Kemahiran'}</option>)}
+                                    </select>
+                                    <select required className="p-3 border rounded-lg bg-white text-sm font-bold" value={form.kataKerjaKbat} onChange={e => setForm({...form, kataKerjaKbat: e.target.value})}>
+                                        {KATA_KERJA_KBAT_OPTS.map(opt => <option key={opt} value={opt}>{opt || 'Sila Pilih Kata Kerja'}</option>)}
+                                    </select>
+                                </div>
+                                <input type="text" required className="w-full p-3 border rounded-lg bg-white outline-none text-sm" placeholder="Ulasan elemen KBAT..." value={form.ulasanKbat} onChange={e => setForm({...form, ulasanKbat: e.target.value})} />
+                            </div>
+
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-6">
+                                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-widest">Dokumentasi Bergambar (Maks 6)</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {[1, 2, 3, 4, 5, 6].map(num => (
+                                        <div key={num} className="bg-white p-3 rounded-xl shadow-sm space-y-3">
+                                            <ImageUpload label={`Gambar ${num}`} field={`gambar${num}`} />
+                                            <input type="text" className="w-full p-2 border rounded-lg text-[10px] outline-none" placeholder={`Ulasan Gambar ${num}...`} value={form[`ulasan${num}`]} onChange={e => setForm({...form, [`ulasan${num}`]: e.target.value})} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="pt-6 border-t">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Disediakan Oleh (Guru Penasihat)</label>
+                                <select required className="w-full p-4 border rounded-xl bg-blue-50 font-black uppercase text-xs text-blue-700" value={form.namaDisediakan} onChange={e => setForm({...form, namaDisediakan: e.target.value, disediakanOleh: e.target.value})}>
+                                    <option value="">-- SILA PILIH NAMA GURU --</option>
+                                    {teachers.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+
+                            <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition transform hover:scale-[1.01] uppercase tracking-[0.2em]">Simpan Laporan Cloud</button>
+                        </form>
+                    </div>
+                );
+            };
+
+            const RekodLaporan = () => {
+                const [selected, setSelected] = useState(null);
+                const [isSigning, setIsSigning] = useState(false);
+                const [filterClub, setFilterClub] = useState('SEMUA');
+                const canvasRef = useRef(null);
+
+                const saveSign = async () => {
+                    const data = canvasRef.current.toDataURL();
+                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', selected.id), { eSignPenyemak: data });
+                    setSelected({...selected, eSignPenyemak: data});
+                    setIsSigning(false);
+                    showToast('Laporan Telah Disemak!');
+                };
+
+                const filteredReports = useMemo(() => {
+                    if (filterClub === 'SEMUA') return reports;
+                    return reports.filter(r => r.unit === filterClub);
+                }, [reports, filterClub]);
+
+                if (selected) {
+                    const picList = [1, 2, 3, 4, 5, 6].map(n => ({ img: selected[`gambar${n}`], ulasan: selected[`ulasan${n}`] })).filter(x => x.img);
+                    return (
+                        <div className="bg-white p-4 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative">
+                            <div className="flex justify-between items-center mb-8 print:hidden">
+                                <button onClick={()=>setSelected(null)} className="text-blue-600 font-bold flex items-center gap-1">&larr; KEMBALI</button>
+                                <button onClick={()=>window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK PDF</button>
+                            </div>
+
+                            <div className="text-center mb-8">
+                                <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="h-24 mx-auto mb-4" />
+                                <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
+                                <p className="font-bold mt-1">SK PENDIDIKAN KHAS MIRI</p>
+                            </div>
+                            
+                            <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
+                                <tbody>
+                                    <tr>
+                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td>
+                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td>
+                                    </tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
+                                    <tr>
+                                        <td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase">Elemen KBAT</td>
+                                        <td colSpan="3" className="border-2 border-slate-800 p-2">
+                                            <div className="font-bold underline uppercase">{selected.kemahiranBerfikir} • {selected.kataKerjaKbat}</div>
+                                            <div className="mt-1 italic">{selected.ulasanKbat}</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            {selected.laporanMurid && (
+                                <div className="mt-6 border-2 border-slate-800 p-2 break-inside-avoid">
+                                    <h4 className="font-bold uppercase text-[10px] mb-2 bg-slate-50 p-1 border-b-2 border-slate-800 text-center">Lampiran Laporan Murid</h4>
+                                    <img src={selected.laporanMurid} className="max-h-96 mx-auto object-contain" />
+                                </div>
+                            )}
+
+                            {picList.length > 0 && (
+                                <div className="mt-6 space-y-4 break-inside-avoid">
+                                    <h4 className="font-bold uppercase text-[10px] bg-slate-50 p-1 border-2 border-slate-800 text-center uppercase tracking-widest">Dokumentasi Bergambar</h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        {picList.map((item, idx) => (
+                                            <div key={idx} className="border-2 border-slate-800 p-2 text-center bg-white shadow-sm">
+                                                <img src={item.img} className="h-32 w-full object-cover border border-slate-200 mb-2" />
+                                                <p className="text-[9px] italic font-bold uppercase">{item.ulasan || 'Tiada Ulasan'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
+                                <div className="w-64">
+                                    <p className="text-xs font-bold uppercase mb-12">Disediakan oleh,</p>
+                                    <p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900">{selected.namaDisediakan}</p>
+                                    <p className="text-[9px]">Guru Penasihat</p>
+                                </div>
+                                <div className="w-64">
+                                    <p className="text-xs font-bold uppercase mb-2">Disemak oleh,</p>
+                                    <div className="h-12 flex items-center justify-center">
+                                        {selected.eSignPenyemak ? <img src={selected.eSignPenyemak} className="h-full object-contain" /> : 
+                                            <button onClick={()=>setIsSigning(true)} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden uppercase">Klik E-Sign</button>
+                                        }
+                                    </div>
+                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase">PENGURUSAN SEKOLAH</p>
+                                    <p className="text-[9px]">SKPK Miri</p>
+                                </div>
+                            </div>
+
+                            {isSigning && (
+                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
+                                    <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+                                        <h3 className="font-black mb-4 uppercase text-center text-blue-600">Tandatangan Pengesahan</h3>
+                                        <canvas ref={canvasRef} width="300" height="150" className="border-2 border-dashed border-slate-300 bg-slate-50 w-full cursor-crosshair touch-none rounded-lg" />
+                                        <div className="flex gap-2 mt-6">
+                                            <button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg">BATAL</button>
+                                            <button onClick={saveSign} className="flex-1 py-2 font-black bg-blue-600 text-white rounded-lg shadow-lg">SIMPAN</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="space-y-6">
+                        {/* Kategori Tab Pelaporan */}
+                        <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden">
+                            <button onClick={()=>setFilterClub('SEMUA')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClub === 'SEMUA' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>SEMUA</button>
+                            {activities.map(club => (
+                                <button key={club} onClick={()=>setFilterClub(club)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClub === club ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{club}</button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filteredReports.length === 0 ? (
+                                <div className="col-span-full p-20 text-center text-slate-400 italic bg-white border-2 border-dashed rounded-3xl">Tiada rekod laporan untuk kategori yang dipilih.</div>
+                            ) : (
+                                filteredReports.map(r => (
+                                    <div key={r.id} onClick={()=>setSelected(r)} className="p-5 bg-white border rounded-2xl shadow-sm hover:border-blue-500 transition group cursor-pointer border-l-8 border-l-blue-500">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>
+                                            {r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}
+                                        </div>
+                                        <h3 className="font-black text-slate-800 uppercase group-hover:text-blue-600 transition truncate">{r.tajuk}</h3>
+                                        <p className="text-[10px] text-slate-400 font-bold mt-2">{r.tarikh} • {r.namaDisediakan}</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            const KehadiranView = () => {
+                const [filterClubAtt, setFilterClubAtt] = useState('SEMUA');
+                const [selectedRecord, setSelectedRecord] = useState(null);
+
+                const filteredAtt = useMemo(() => {
+                    if (filterClubAtt === 'SEMUA') return attendanceRecords;
+                    return attendanceRecords.filter(r => r.aktiviti === filterClubAtt);
+                }, [attendanceRecords, filterClubAtt]);
+
+                if (selectedRecord) {
+                    const act = selectedRecord.aktiviti?.toUpperCase();
+                    const clubStudents = students.filter(s => s.act1 === act || s.act2 === act || s.act3 === act);
+                    return (
+                        <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative">
+                            <button onClick={()=>setSelectedRecord(null)} className="mb-6 text-blue-600 font-bold print:hidden flex items-center gap-1">&larr; KEMBALI</button>
+                            <div className="text-center mb-8">
+                                <h1 className="text-2xl font-black uppercase underline">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1>
+                                <p className="font-bold mt-2">TARIKH: {selectedRecord.tarikh}</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse border-2 border-slate-800 text-sm">
+                                    <thead>
+                                        <tr className="bg-slate-100">
+                                            <th className="border-2 border-slate-800 p-2 w-16">Bil</th>
+                                            <th className="border-2 border-slate-800 p-2 text-left">Nama Penuh Murid</th>
+                                            <th className="border-2 border-slate-800 p-2 w-32 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {clubStudents.map((s, idx) => (
+                                            <tr key={s.id}>
+                                                <td className="border-2 border-slate-800 p-2 text-center">{idx + 1}</td>
+                                                <td className="border-2 border-slate-800 p-2 font-bold uppercase">{s.name}</td>
+                                                <td className={`border-2 border-slate-800 p-2 text-center font-black ${selectedRecord.records[s.id] ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {selectedRecord.records[s.id] ? 'HADIR' : 'TH'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button onClick={()=>window.print()} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl print:hidden flex items-center justify-center gap-2 uppercase tracking-widest"><Icons.Printer /> Cetak Senarai</button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="space-y-6">
+                        <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden">
+                            <button onClick={()=>setFilterClubAtt('SEMUA')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClubAtt === 'SEMUA' ? 'bg-green-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>SEMUA</button>
+                            {activities.map(club => (
+                                <button key={club} onClick={()=>setFilterClubAtt(club)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClubAtt === club ? 'bg-green-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{club}</button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filteredAtt.length === 0 ? (
+                                <div className="col-span-full p-20 text-center text-slate-400 italic bg-white border-2 border-dashed rounded-3xl uppercase font-black text-xs tracking-widest">Tiada rekod kehadiran untuk kategori ini.</div>
+                            ) : (
+                                filteredAtt.map(r => (
+                                    <div key={r.id} onClick={()=>setSelectedRecord(r)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-lg transition-all border-l-[10px] border-l-green-500 cursor-pointer group">
+                                        <div>
+                                            <p className="font-black text-xs uppercase text-slate-800 leading-none mb-2 group-hover:text-green-600 transition-colors">{r.aktiviti}</p>
+                                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{r.tarikh}</p>
+                                        </div>
+                                        <div className="text-slate-200 group-hover:text-green-500 transition-colors"><Icons.ClipboardList /></div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            const KehadiranForm = () => {
+                const [tarikh, setTarikh] = useState('');
+                const [unit, setUnit] = useState(activities[0] || '');
+                const [att, setAtt] = useState({});
+
+                const filtered = useMemo(() => {
+                    const u = unit.toUpperCase();
+                    return students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u);
+                }, [students, unit]);
+
+                useEffect(() => {
+                    const initial = {};
+                    filtered.forEach(s => initial[s.id] = true);
+                    setAtt(initial);
+                }, [filtered]);
+
+                const saveAtt = async () => {
+                    if (!tarikh) return showToast('Sila pilih tarikh.');
+                    try {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), { 
+                            tarikh, aktiviti: unit, records: att, timestamp: Date.now(), createdBy: user.uid 
+                        });
+                        showToast('Kehadiran disimpan!'); setCurrentView('rekod_kehadiran');
+                    } catch (e) { showToast('Ralat simpan.'); }
+                };
+
+                return (
+                    <div className="bg-white p-6 md:p-8 rounded-2xl border shadow-sm">
+                        <h2 className="text-2xl font-black text-green-600 flex items-center gap-3 uppercase"><Icons.Users /> KEHADIRAN</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <input type="date" className="p-3 border rounded-xl font-bold bg-slate-50" value={tarikh} onChange={e=>setTarikh(e.target.value)} />
+                            <select className="p-3 border rounded-xl bg-slate-50 font-black uppercase text-xs" value={unit} onChange={e=>setUnit(e.target.value)}>
+                                {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2 border rounded-xl p-2 divide-y">
+                            {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 italic font-bold">Pilih unit untuk melihat senarai nama.</p> : 
+                                filtered.map(s => (
+                                    <div key={s.id} onClick={()=>setAtt({...att, [s.id]: !att[s.id]})} className={`p-4 flex justify-between items-center cursor-pointer transition rounded-lg ${att[s.id] ? 'bg-green-50' : 'bg-red-50'}`}>
+                                        <span className="font-bold uppercase text-xs">{s.name}</span>
+                                        {att[s.id] ? <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Hadir</span> : <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">TH</span>}
+                                    </div>
+                                ))
+                            }
+                        </div>
+                        <button onClick={saveAtt} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase tracking-widest hover:bg-black transition">Simpan Kehadiran ({filtered.length} Murid)</button>
+                    </div>
+                );
+            };
+
+            const RumusanView = () => {
+                const [sel, setSel] = useState(activities[0] || '');
+                const stats = useMemo(() => {
+                    const u = sel.toUpperCase();
+                    const list = students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u);
+                    const records = attendanceRecords.filter(r => r.aktiviti === sel);
+                    return list.map(s => {
+                        let present = 0;
+                        records.forEach(r => { if (r.records[s.id]) present++; });
+                        return { ...s, present, total: records.length };
+                    });
+                }, [students, attendanceRecords, sel]);
+
+                return (
+                    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2"><Icons.PieChart /> Analisis Kehadiran</h2>
+                            <select className="p-2 border rounded-lg text-xs font-bold bg-slate-50" value={sel} onChange={e=>setSel(e.target.value)}>
+                                {activities.map(a=><option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                        <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                            <thead className="bg-slate-100">
+                                <tr>
+                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Bil</th>
+                                    <th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
+                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Hadir / Sesi</th>
+                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {stats.map((s, i) => {
+                                    const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0;
+                                    return (
+                                        <tr key={i}>
+                                            <td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td>
+                                            <td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td>
+                                            <td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td>
+                                            <td className="p-2 border-2 border-slate-800 text-center font-black">
+                                                <span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            };
+
+            const TetapanData = () => {
+                const [links, setLinks] = useState({ murid: csvLinkMurid, guru: csvLinkGuru });
+                const handleSave = async () => {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), { csvLinkMurid: links.murid, csvLinkGuru: links.guru });
+                    showToast('Pangkalan data Cloud dikemaskini!');
+                };
+                return (
+                    <div className="bg-white p-6 border-2 border-slate-100 rounded-2xl shadow-sm space-y-6">
+                        <h2 className="text-xl font-black uppercase flex items-center gap-2"><Icons.Settings /> Integrasi Google Sheets</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Murid (Sheet 1)</label>
+                                <input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white transition outline-none" value={links.murid} onChange={e=>setLinks({...links, murid: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Guru (Sheet 2)</label>
+                                <input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white transition outline-none" value={links.guru} onChange={e=>setLinks({...links, guru: e.target.value})} />
+                            </div>
+                            <button onClick={handleSave} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase tracking-widest shadow-xl hover:bg-black transition">Kemaskini Pangkalan Data</button>
+                        </div>
+                    </div>
+                );
+            };
+
+            if (isLoading) return (
+                <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest uppercase">
+                    <div className="text-6xl mb-6 animate-pulse">🚀</div>
+                    <div className="text-center">
+                        <h2 className="text-sm font-black mb-2 tracking-[0.2em]">Memuatkan Sistem eKoku Live</h2>
+                        <p className="text-[9px] text-blue-400 font-bold opacity-80 uppercase">SK Pendidikan Khas Miri</p>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col max-w-[100vw] overflow-x-hidden border-t-8 border-blue-600">
+                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-xs animate-slide-in">{toast}</div>}
+                    
+                    <header className="bg-slate-900 text-white print:hidden sticky top-0 z-50 shadow-2xl">
+                        <div className="px-6 py-4 flex justify-between items-center border-b border-white/5">
+                            <div>
+                                <h1 className="text-xl font-black tracking-tighter leading-none flex items-center gap-2 uppercase">eKOKU <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase">Live</span></h1>
+                                <p className="text-[10px] font-bold opacity-40 tracking-[0.2em] mt-1.5 uppercase">SK Pendidikan Khas Miri</p>
+                            </div>
+                            <div className="hidden md:flex text-[10px] font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 uppercase tracking-widest">SISTEM REKOD KOKURIKULUM</div>
+                        </div>
+                        <nav className="p-1 grid grid-cols-3 md:grid-cols-6 gap-1 bg-white/5 backdrop-blur-md">
+                            {Object.entries({
+                                laporan_baru: { label: 'Borang', icon: Icons.PenTool },
+                                rekod_laporan: { label: 'Laporan', icon: Icons.Archive },
+                                kehadiran_baru: { label: 'Hadir', icon: Icons.Users },
+                                rekod_kehadiran: { label: 'Senarai', icon: Icons.ClipboardList },
+                                rumusan: { label: 'Analisis', icon: Icons.PieChart },
+                                tetapan: { label: 'Set', icon: Icons.Settings }
+                            }).map(([id, item]) => (
+                                <button key={id} onClick={() => setCurrentView(id)} className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${currentView === id ? 'bg-blue-600 text-white shadow-lg scale-95' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}>
+                                    <item.icon /><span className="text-[9px] mt-1.5 font-bold uppercase tracking-tighter">{item.label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                    </header>
+
+                    <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full mb-20">
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            {currentView === 'laporan_baru' && <LaporanForm />}
+                            {currentView === 'rekod_laporan' && <RekodLaporan />}
+                            {currentView === 'kehadiran_baru' && <KehadiranForm />}
+                            {currentView === 'rekod_kehadiran' && <KehadiranView />}
+                            {currentView === 'rumusan' && <RumusanView />}
+                            {currentView === 'tetapan' && <TetapanData />}
+                        </div>
+                    </main>
+
+                    <footer className="p-10 text-center border-t border-slate-100 print:hidden bg-white/50">
+                        <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.4em] opacity-60">
+                            Sistem eKoku Digital &copy; 2024 SKPK MIRI • Sarawak Smart School Project
+                        </p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
