@@ -353,7 +353,6 @@
                     return reports.filter(r => r.unit === filterClub);
                 }, [reports, filterClub]);
 
-                // --- TANDATANGAN LOGIK (FIXED) ---
                 const startSigning = (type) => {
                     setSigningType(type);
                     setIsSigning(true);
@@ -373,6 +372,7 @@
                 };
 
                 const clearSign = () => {
+                    if (!canvasRef.current) return;
                     const canvas = canvasRef.current;
                     const ctx = canvas.getContext('2d');
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -446,8 +446,8 @@
 
                             <div className="text-center mb-8">
                                 <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="h-24 mx-auto mb-4" />
-                                <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
-                                <p className="font-bold mt-1">SK PENDIDIKAN KHAS MIRI</p>
+                                <h1 className="text-2xl font-bold uppercase underline text-slate-900">LAPORAN {selected.unit}</h1>
+                                <p className="font-bold mt-1 text-slate-800">SK PENDIDIKAN KHAS MIRI</p>
                             </div>
                             
                             <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
@@ -490,7 +490,6 @@
                                 </div>
                             )}
 
-                            {/* SLOT TANDATANGAN GURU & PENGESAHAN */}
                             <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
                                 <div className="w-64">
                                     <p className="text-[10px] font-bold uppercase mb-12">Disediakan oleh (Guru Pembimbing),</p>
@@ -505,7 +504,7 @@
                                     <p className="text-[9px]">Guru Pembimbing</p>
                                 </div>
                                 <div className="w-64">
-                                    <p className="text-[10px] font-bold uppercase mb-12">Disemak oleh (Pentadbir),</p>
+                                    <p className="text-[10px] font-bold uppercase mb-12 text-slate-800">Disemak oleh (Pentadbir),</p>
                                     <div className="h-16 flex items-center justify-center mb-1">
                                         {selected.eSignPenyemak ? (
                                             <img src={selected.eSignPenyemak} className="h-full object-contain" />
@@ -513,12 +512,12 @@
                                             <button onClick={()=>startSigning('admin')} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">Klik T/Tangan Pengesahan</button>
                                         )}
                                     </div>
-                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px]">PENGURUSAN SEKOLAH</p>
-                                    <p className="text-[9px]">SKPK Miri</p>
+                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px] text-slate-900">ENCIK SALIHIN BIN AHMAD</p>
+                                    <p className="text-[9px] font-bold text-slate-700">Penolong Kanan Kokurikulum</p>
+                                    <p className="text-[9px] text-slate-500">SKPK Miri</p>
                                 </div>
                             </div>
 
-                            {/* MODAL TANDATANGAN */}
                             {isSigning && (
                                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
                                     <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
@@ -557,7 +556,7 @@
                                             <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>
                                             {r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}
                                         </div>
-                                        <h3 className="font-black text-slate-800 uppercase group-hover:text-blue-600 transition truncate">{r.tajuk}</h3>
+                                        <h3 className="font-black text-slate-800 group-hover:text-blue-600 transition truncate">{r.tajuk}</h3>
                                         <p className="text-[10px] text-slate-400 font-bold mt-2">{r.tarikh} • {r.namaDisediakan}</p>
                                     </div>
                                 ))
@@ -583,8 +582,8 @@
                         <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative">
                             <button onClick={()=>setSelectedRecord(null)} className="mb-6 text-blue-600 font-bold print:hidden flex items-center gap-1">&larr; KEMBALI</button>
                             <div className="text-center mb-8">
-                                <h1 className="text-2xl font-black uppercase underline">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1>
-                                <p className="font-bold mt-2">TARIKH: {selectedRecord.tarikh}</p>
+                                <h1 className="text-2xl font-black uppercase underline text-slate-900">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1>
+                                <p className="font-bold mt-2 text-slate-800 uppercase">TARIKH: {selectedRecord.tarikh}</p>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full border-collapse border-2 border-slate-800 text-sm">
@@ -599,7 +598,7 @@
                                         {clubStudents.map((s, idx) => (
                                             <tr key={s.id}>
                                                 <td className="border-2 border-slate-800 p-2 text-center">{idx + 1}</td>
-                                                <td className="border-2 border-slate-800 p-2 font-bold uppercase">{s.name}</td>
+                                                <td className="border-2 border-slate-800 p-2 font-bold uppercase text-slate-800">{s.name}</td>
                                                 <td className={`border-2 border-slate-800 p-2 text-center font-black ${selectedRecord.records[s.id] ? 'text-green-600' : 'text-red-600'}`}>
                                                     {selectedRecord.records[s.id] ? 'HADIR' : 'TH'}
                                                 </td>
@@ -608,7 +607,7 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <button onClick={()=>window.print()} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl print:hidden flex items-center justify-center gap-2 uppercase tracking-widest"><Icons.Printer /> Cetak Senarai</button>
+                            <button onClick={()=>window.print()} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl print:hidden flex items-center justify-center gap-2 uppercase tracking-widest hover:bg-black transition"><Icons.Printer /> Cetak Senarai Kehadiran</button>
                         </div>
                     );
                 }
@@ -777,7 +776,7 @@
 
             return (
                 <div className="min-h-screen bg-slate-50 flex flex-col max-w-[100vw] overflow-x-hidden border-t-8 border-blue-600">
-                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-[1000] font-bold text-xs animate-slide-in">{toast}</div>}
+                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-xs animate-slide-in">{toast}</div>}
                     
                     <header className="bg-slate-900 text-white print:hidden sticky top-0 z-50 shadow-2xl">
                         <div className="px-6 py-4 flex justify-between items-center border-b border-white/5">
