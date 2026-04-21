@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eKOKU LIVE - SKPK MIRI</title>
     <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com/"></script>
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -21,6 +21,12 @@
         }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+        
+        /* Fix for canvas signing pad smoothness */
+        .signature-pad {
+            touch-action: none;
+            cursor: crosshair;
+        }
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800">
@@ -88,9 +94,7 @@
 
         const parseCSV = (str) => {
             if (!str) return [];
-            const arr = [];
-            let quote = false;
-            let row = 0, col = 0, c = 0;
+            const arr = []; let quote = false; let row = 0, col = 0, c = 0;
             for (; c < str.length; c++) {
                 let cc = str[c], nc = str[c+1];
                 arr[row] = arr[row] || [];
@@ -109,11 +113,7 @@
         const fetchCSVData = async (rawUrl) => {
             if (!rawUrl) return null;
             const url = rawUrl.trim();
-            const proxies = [
-                `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                url
-            ];
+            const proxies = [`https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, url];
             for (let proxy of proxies) {
                 try {
                     const res = await fetch(proxy);
@@ -204,7 +204,6 @@
                 syncData();
             }, [csvLinkMurid, csvLinkGuru]);
 
-            // --- BORANG LAPORAN ASAL ---
             const LaporanForm = () => {
                 const [form, setForm] = useState({
                     perjumpaan: '1', unit: activities[0] || '', tarikh: '', tajuk: '', aktiviti: '', 
@@ -238,7 +237,7 @@
                     e.preventDefault();
                     try {
                         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), {
-                            ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null
+                            ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null, eSignGuru: null
                         });
                         showToast('Laporan berjaya disimpan!');
                         setCurrentView('rekod_laporan');
@@ -329,7 +328,7 @@
                             </div>
 
                             <div className="pt-6 border-t">
-                                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Disediakan Oleh (Guru Penasihat)</label>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Sila Pilih Nama Anda (Guru Penasihat)</label>
                                 <select required className="w-full p-4 border rounded-xl bg-blue-50 font-black uppercase text-xs text-blue-700" value={form.namaDisediakan} onChange={e => setForm({...form, namaDisediakan: e.target.value, disediakanOleh: e.target.value})}>
                                     <option value="">-- SILA PILIH NAMA GURU --</option>
                                     {teachers.map(t => <option key={t} value={t}>{t}</option>)}
@@ -345,21 +344,96 @@
             const RekodLaporan = () => {
                 const [selected, setSelected] = useState(null);
                 const [isSigning, setIsSigning] = useState(false);
+                const [signingType, setSigningType] = useState(null); // 'guru' or 'admin'
                 const [filterClub, setFilterClub] = useState('SEMUA');
                 const canvasRef = useRef(null);
-
-                const saveSign = async () => {
-                    const data = canvasRef.current.toDataURL();
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', selected.id), { eSignPenyemak: data });
-                    setSelected({...selected, eSignPenyemak: data});
-                    setIsSigning(false);
-                    showToast('Laporan Telah Disemak!');
-                };
 
                 const filteredReports = useMemo(() => {
                     if (filterClub === 'SEMUA') return reports;
                     return reports.filter(r => r.unit === filterClub);
                 }, [reports, filterClub]);
+
+                // --- TANDATANGAN LOGIK (FIXED) ---
+                const startSigning = (type) => {
+                    setSigningType(type);
+                    setIsSigning(true);
+                };
+
+                const saveSign = async () => {
+                    if (!canvasRef.current) return;
+                    const data = canvasRef.current.toDataURL('image/png');
+                    const field = signingType === 'guru' ? 'eSignGuru' : 'eSignPenyemak';
+                    
+                    try {
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', selected.id), { [field]: data });
+                        setSelected({...selected, [field]: data});
+                        setIsSigning(false);
+                        showToast('Tandatangan berjaya disimpan!');
+                    } catch (e) { showToast('Gagal simpan e-sign.'); }
+                };
+
+                const clearSign = () => {
+                    const canvas = canvasRef.current;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                };
+
+                useEffect(() => {
+                    if (!isSigning || !canvasRef.current) return;
+                    const canvas = canvasRef.current;
+                    const ctx = canvas.getContext('2d');
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = '#000';
+                    let drawing = false;
+
+                    const getPos = (e) => {
+                        const rect = canvas.getBoundingClientRect();
+                        let clientX, clientY;
+                        if (e.touches && e.touches.length > 0) {
+                            clientX = e.touches[0].clientX;
+                            clientY = e.touches[0].clientY;
+                        } else {
+                            clientX = e.clientX;
+                            clientY = e.clientY;
+                        }
+                        return { x: clientX - rect.left, y: clientY - rect.top };
+                    };
+
+                    const move = (e) => {
+                        if (!drawing) return;
+                        e.preventDefault();
+                        const pos = getPos(e);
+                        ctx.lineTo(pos.x, pos.y);
+                        ctx.stroke();
+                    };
+
+                    const start = (e) => {
+                        e.preventDefault();
+                        drawing = true;
+                        const pos = getPos(e);
+                        ctx.beginPath();
+                        ctx.moveTo(pos.x, pos.y);
+                    };
+
+                    const end = () => { drawing = false; ctx.closePath(); };
+
+                    canvas.addEventListener('mousedown', start);
+                    canvas.addEventListener('mousemove', move);
+                    window.addEventListener('mouseup', end);
+                    canvas.addEventListener('touchstart', start, { passive: false });
+                    canvas.addEventListener('touchmove', move, { passive: false });
+                    canvas.addEventListener('touchend', end);
+
+                    return () => {
+                        canvas.removeEventListener('mousedown', start);
+                        canvas.removeEventListener('mousemove', move);
+                        window.removeEventListener('mouseup', end);
+                        canvas.removeEventListener('touchstart', start);
+                        canvas.removeEventListener('touchmove', move);
+                        canvas.removeEventListener('touchend', end);
+                    };
+                }, [isSigning]);
 
                 if (selected) {
                     const picList = [1, 2, 3, 4, 5, 6].map(n => ({ img: selected[`gambar${n}`], ulasan: selected[`ulasan${n}`] })).filter(x => x.img);
@@ -379,14 +453,14 @@
                             <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
                                 <tbody>
                                     <tr>
-                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td>
-                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td>
+                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td>
+                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td>
                                     </tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
+                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
                                     <tr>
-                                        <td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase">Elemen KBAT</td>
+                                        <td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Elemen KBAT</td>
                                         <td colSpan="3" className="border-2 border-slate-800 p-2">
                                             <div className="font-bold underline uppercase">{selected.kemahiranBerfikir} • {selected.kataKerjaKbat}</div>
                                             <div className="mt-1 italic">{selected.ulasanKbat}</div>
@@ -416,31 +490,45 @@
                                 </div>
                             )}
 
+                            {/* SLOT TANDATANGAN GURU & PENGESAHAN */}
                             <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
                                 <div className="w-64">
-                                    <p className="text-xs font-bold uppercase mb-12">Disediakan oleh,</p>
-                                    <p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900">{selected.namaDisediakan}</p>
-                                    <p className="text-[9px]">Guru Penasihat</p>
+                                    <p className="text-[10px] font-bold uppercase mb-12">Disediakan oleh (Guru Pembimbing),</p>
+                                    <div className="h-16 flex items-center justify-center mb-1">
+                                        {selected.eSignGuru ? (
+                                            <img src={selected.eSignGuru} className="h-full object-contain" />
+                                        ) : (
+                                            <button onClick={()=>startSigning('guru')} className="bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">Klik T/Tangan Guru</button>
+                                        )}
+                                    </div>
+                                    <p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900 text-[11px]">{selected.namaDisediakan}</p>
+                                    <p className="text-[9px]">Guru Pembimbing</p>
                                 </div>
                                 <div className="w-64">
-                                    <p className="text-xs font-bold uppercase mb-2">Disemak oleh,</p>
-                                    <div className="h-12 flex items-center justify-center">
-                                        {selected.eSignPenyemak ? <img src={selected.eSignPenyemak} className="h-full object-contain" /> : 
-                                            <button onClick={()=>setIsSigning(true)} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden uppercase">Klik E-Sign</button>
-                                        }
+                                    <p className="text-[10px] font-bold uppercase mb-12">Disemak oleh (Pentadbir),</p>
+                                    <div className="h-16 flex items-center justify-center mb-1">
+                                        {selected.eSignPenyemak ? (
+                                            <img src={selected.eSignPenyemak} className="h-full object-contain" />
+                                        ) : (
+                                            <button onClick={()=>startSigning('admin')} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">Klik T/Tangan Pengesahan</button>
+                                        )}
                                     </div>
-                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase">PENGURUSAN SEKOLAH</p>
+                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px]">PENGURUSAN SEKOLAH</p>
                                     <p className="text-[9px]">SKPK Miri</p>
                                 </div>
                             </div>
 
+                            {/* MODAL TANDATANGAN */}
                             {isSigning && (
-                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
+                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
                                     <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-                                        <h3 className="font-black mb-4 uppercase text-center text-blue-600">Tandatangan Pengesahan</h3>
-                                        <canvas ref={canvasRef} width="300" height="150" className="border-2 border-dashed border-slate-300 bg-slate-50 w-full cursor-crosshair touch-none rounded-lg" />
+                                        <h3 className="font-black mb-4 uppercase text-center text-blue-600">
+                                            {signingType === 'guru' ? 'Tandatangan Guru Pembimbing' : 'Tandatangan Pengesahan'}
+                                        </h3>
+                                        <canvas ref={canvasRef} width="300" height="200" className="signature-pad border-2 border-dashed border-slate-300 bg-slate-50 w-full rounded-lg" />
                                         <div className="flex gap-2 mt-6">
-                                            <button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg">BATAL</button>
+                                            <button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg hover:bg-slate-100">BATAL</button>
+                                            <button onClick={clearSign} className="flex-1 py-2 font-bold border rounded-lg hover:bg-slate-100">PADAM</button>
                                             <button onClick={saveSign} className="flex-1 py-2 font-black bg-blue-600 text-white rounded-lg shadow-lg">SIMPAN</button>
                                         </div>
                                     </div>
@@ -452,7 +540,6 @@
 
                 return (
                     <div className="space-y-6">
-                        {/* Kategori Tab Pelaporan */}
                         <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden">
                             <button onClick={()=>setFilterClub('SEMUA')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClub === 'SEMUA' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>SEMUA</button>
                             {activities.map(club => (
@@ -690,7 +777,7 @@
 
             return (
                 <div className="min-h-screen bg-slate-50 flex flex-col max-w-[100vw] overflow-x-hidden border-t-8 border-blue-600">
-                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-xs animate-slide-in">{toast}</div>}
+                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-[1000] font-bold text-xs animate-slide-in">{toast}</div>}
                     
                     <header className="bg-slate-900 text-white print:hidden sticky top-0 z-50 shadow-2xl">
                         <div className="px-6 py-4 flex justify-between items-center border-b border-white/5">
