@@ -171,16 +171,13 @@
                         if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid);
                         if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru);
                     }
-                }, (err) => console.error("Config fetch error:", err));
-                
+                });
                 const unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
                     setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                }, (err) => console.error("Reports fetch error:", err));
-                
+                });
                 const unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
                     setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                }, (err) => console.error("Attendance fetch error:", err));
-                
+                });
                 return () => { unsubConfig(); unsubReports(); unsubAttendance(); };
             }, [user]);
 
@@ -464,7 +461,7 @@
                                 <div className="text-center mb-8">
                                     <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="h-24 mx-auto mb-4" />
                                     <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
-                                    <p className="font-bold mt-1">SK PENDIDIKAN KHAS MIRI</p>
+                                    <p className="font-bold mt-1 text-slate-900 uppercase">SK PENDIDIKAN KHAS MIRI</p>
                                 </div>
                                 <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
                                     <tbody>
@@ -523,7 +520,7 @@
                             </div>
 
                             {isSigning && (
-                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
+                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden text-slate-900">
                                     <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
                                         <h3 className="font-black mb-4 uppercase text-center text-blue-600">{signingType === 'guru' ? 'Guru Pembimbing' : 'Tandatangan Pengesahan'}</h3>
                                         <canvas ref={canvasRef} width="300" height="200" className="signature-pad border-2 border-dashed border-slate-300 bg-slate-50 w-full rounded-lg" />
@@ -539,8 +536,8 @@
                                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
                                     <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl text-center">
                                         <div className="text-red-500 text-5xl mb-4">⚠️</div>
-                                        <h3 className="font-black text-xl mb-2">Padam Laporan?</h3>
-                                        <p className="text-slate-500 text-sm mb-6">Tindakan ini tidak boleh dikembalikan.</p>
+                                        <h3 className="font-black text-xl mb-2 text-slate-800">Padam Laporan?</h3>
+                                        <p className="text-slate-500 text-sm mb-6 uppercase">Tindakan ini tidak boleh dikembalikan.</p>
                                         <div className="flex gap-3">
                                             <button onClick={() => setShowDeleteConfirm(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-xl">Batal</button>
                                             <button onClick={() => handleDelete(showDeleteConfirm)} className="flex-1 py-3 font-black bg-red-600 text-white rounded-xl shadow-lg">Ya, Padam</button>
@@ -580,25 +577,13 @@
                 const [filterClubAtt, setFilterClubAtt] = useState('SEMUA');
                 const [selectedRecord, setSelectedRecord] = useState(null);
                 const [showDeleteConfirmAtt, setShowDeleteConfirmAtt] = useState(null);
-
-                const filteredAtt = useMemo(() => {
-                    if (filterClubAtt === 'SEMUA') return attendanceRecords;
-                    return attendanceRecords.filter(r => r.aktiviti === filterClubAtt);
-                }, [attendanceRecords, filterClubAtt]);
-
-                const handleDeleteAtt = async (id) => {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', id));
-                        showToast('Rekod kehadiran dipadam.');
-                        setShowDeleteConfirmAtt(null); setSelectedRecord(null);
-                    } catch (e) { showToast('Gagal memadam.'); }
-                };
-
+                const filteredAtt = useMemo(() => { if (filterClubAtt === 'SEMUA') return attendanceRecords; return attendanceRecords.filter(r => r.aktiviti === filterClubAtt); }, [attendanceRecords, filterClubAtt]);
+                const handleDeleteAtt = async (id) => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', id)); showToast('Rekod kehadiran dipadam.'); setShowDeleteConfirmAtt(null); setSelectedRecord(null); } catch (e) { showToast('Gagal memadam.'); } };
                 if (selectedRecord) {
                     const act = selectedRecord.aktiviti?.toUpperCase();
                     const clubStudents = students.filter(s => s.act1 === act || s.act2 === act || s.act3 === act);
                     return (
-                        <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in zoom-in duration-300">
+                        <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in zoom-in duration-300 text-slate-900">
                             <div className="flex justify-between items-center mb-8 print:hidden">
                                 <button onClick={()=>setSelectedRecord(null)} className="text-blue-600 font-bold">&larr; KEMBALI</button>
                                 <div className="flex gap-2 text-slate-700">
@@ -619,7 +604,7 @@
                             {showDeleteConfirmAtt && (
                                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
                                     <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl text-center">
-                                        <h3 className="font-black text-xl mb-2 text-slate-800">Padam Kehadiran?</h3>
+                                        <h3 className="font-black text-xl mb-2 text-slate-800 uppercase tracking-widest">Padam Rekod?</h3>
                                         <div className="flex gap-3 mt-6"><button onClick={() => setShowDeleteConfirmAtt(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-xl">Batal</button><button onClick={() => handleDeleteAtt(showDeleteConfirmAtt)} className="flex-1 py-3 font-black bg-red-600 text-white rounded-xl">Ya, Padam</button></div>
                                     </div>
                                 </div>
@@ -627,7 +612,6 @@
                         </div>
                     );
                 }
-
                 return (
                     <div className="space-y-6 animate-in slide-in-from-bottom duration-500">
                         <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden text-slate-700">
@@ -662,14 +646,14 @@
                     <div className="bg-white p-6 md:p-8 rounded-2xl border shadow-sm animate-in slide-in-from-left duration-500">
                         <h2 className="text-2xl font-black text-green-600 mb-6 flex items-center gap-3 uppercase"><Icons.Users /> KEHADIRAN</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <input type="date" className="p-3 border rounded-xl font-bold bg-slate-50" value={tarikh} onChange={e=>setTarikh(e.target.value)} />
+                            <input type="date" className="p-3 border rounded-xl font-bold bg-slate-50 text-slate-800" value={tarikh} onChange={e=>setTarikh(e.target.value)} />
                             <select className="p-3 border rounded-xl bg-slate-50 font-black uppercase text-xs text-slate-700" value={unit} onChange={e=>setUnit(e.target.value)}>{activities.map(a => <option key={a} value={a}>{a}</option>)}</select>
                         </div>
                         <div className="space-y-2 border rounded-xl p-2 divide-y">
-                            {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 font-bold italic">Sila muat data dari Google Sheets di tab Tetapan.</p> : filtered.map(s => (
+                            {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Data sedang ditarik dari Sheets...</p> : filtered.map(s => (
                                 <div key={s.id} onClick={()=>setAtt({...att, [s.id]: !att[s.id]})} className={`p-4 flex justify-between items-center cursor-pointer transition rounded-lg ${att[s.id] ? 'bg-green-50' : 'bg-red-50'}`}>
                                     <span className="font-bold uppercase text-xs text-slate-700">{s.name}</span>
-                                    {att[s.id] ? <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Hadir</span> : <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">TH</span>}
+                                    {att[s.id] ? <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm">Hadir</span> : <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm">TH</span>}
                                 </div>
                             ))}
                         </div>
@@ -680,21 +664,13 @@
 
             const RumusanView = () => {
                 const [sel, setSel] = useState(activities[0] || '');
-                const stats = useMemo(() => {
-                    const u = sel.toUpperCase();
-                    const list = students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u);
-                    const records = attendanceRecords.filter(r => r.aktiviti === sel);
-                    return list.map(s => { let present = 0; records.forEach(r => { if (r.records[s.id]) present++; }); return { ...s, present, total: records.length }; });
-                }, [students, attendanceRecords, sel]);
+                const stats = useMemo(() => { const u = sel.toUpperCase(); const list = students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u); const records = attendanceRecords.filter(r => r.aktiviti === sel); return list.map(s => { let present = 0; records.forEach(r => { if (r.records[s.id]) present++; }); return { ...s, present, total: records.length }; }); }, [students, attendanceRecords, sel]);
                 return (
                     <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6 animate-in slide-in-from-right duration-500">
                         <div className="flex justify-between items-center"><h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2"><Icons.PieChart /> Analisis Kehadiran</h2><select className="p-2 border rounded-lg text-xs font-bold bg-slate-50 text-slate-700" value={sel} onChange={e=>setSel(e.target.value)}>{activities.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
                         <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
                             <thead className="bg-slate-100"><tr><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Bil</th><th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Hadir / Sesi</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">%</th></tr></thead>
-                            <tbody>{stats.map((s, i) => {
-                                const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0;
-                                return (<tr key={i}><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td><td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td><td className="p-2 border-2 border-slate-800 text-center font-black"><span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span></td></tr>);
-                            })}</tbody>
+                            <tbody>{stats.map((s, i) => { const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0; return (<tr key={i}><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td><td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td><td className="p-2 border-2 border-slate-800 text-center font-black"><span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span></td></tr>); })}</tbody>
                         </table>
                     </div>
                 );
@@ -722,7 +698,7 @@
                     {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-[1000] font-bold text-xs animate-slide-in">{toast}</div>}
                     <header className="bg-slate-900 text-white print:hidden sticky top-0 z-50 shadow-2xl">
                         <div className="px-6 py-4 flex justify-between items-center border-b border-white/5">
-                            <div><h1 className="text-xl font-black tracking-tighter leading-none flex items-center gap-2 uppercase">eKOKU <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase">Live</span></h1><p className="text-[10px] font-bold opacity-40 tracking-[0.2em] mt-1.5 uppercase text-blue-100">SK Pendidikan Khas Miri</p></div>
+                            <div><h1 className="text-xl font-black tracking-tighter leading-none flex items-center gap-2 uppercase">eKOKU <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase tracking-widest">Live</span></h1><p className="text-[10px] font-bold opacity-40 tracking-[0.2em] mt-1.5 uppercase text-blue-100">SK Pendidikan Khas Miri</p></div>
                             <div className="hidden md:flex text-[10px] font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 uppercase tracking-widest">SISTEM REKOD KOKURIKULUM</div>
                         </div>
                         <nav className="p-1 grid grid-cols-3 md:grid-cols-6 gap-1 bg-white/5 backdrop-blur-md">
@@ -746,7 +722,7 @@
                         {currentView === 'rumusan' && <RumusanView />}
                         {currentView === 'tetapan' && <TetapanData />}
                     </main>
-                    <footer className="p-10 text-center border-t border-slate-100 print:hidden bg-white/50"><p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.4em] opacity-60">Sistem eKoku Digital &copy; 2024 SKPK MIRI • Sarawak Smart School Project</p></footer>
+                    <footer className="p-10 text-center border-t border-slate-100 print:hidden bg-white/50 text-slate-400 uppercase font-black text-[11px] tracking-widest">Sistem eKoku Digital &copy; 2024 SKPK MIRI</footer>
                 </div>
             );
         }
