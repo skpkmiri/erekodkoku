@@ -11,6 +11,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel untuk terjemah JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- html2pdf.js untuk fungsi Simpan PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         @media print { 
             .print\:hidden { display: none !important; } 
@@ -22,10 +24,13 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
         
-        /* Fix for canvas signing pad smoothness */
         .signature-pad {
             touch-action: none;
             cursor: crosshair;
+        }
+
+        #pdf-content {
+            background: white;
         }
     </style>
 </head>
@@ -41,7 +46,7 @@
 
     <script type="text/babel" data-type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
-        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, updateDoc } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+        import { getFirestore, initializeFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 
         const { useState, useMemo, useEffect, useRef } = React;
@@ -61,10 +66,14 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        
+        // MENGAKTIFKAN LONG POLLING UNTUK MENGATASI ISU BACKEND TIMEOUT
+        const db = initializeFirestore(app, {
+            experimentalForceLongPolling: true,
+        });
+        
         const appId = 'ekoku-skpk-miri';
 
-        // --- ICONS ---
         const Icons = {
             PenTool: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>,
             Users: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
@@ -72,10 +81,12 @@
             Archive: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>,
             PieChart: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>,
             Printer: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>,
-            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+            Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
+            Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>,
+            Download: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         };
 
-        // --- UTILS ---
         const compressImage = (base64Str, maxWidth = 600) => {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -126,10 +137,10 @@
             throw new Error('Gagal muat turun data dari Google Sheets.');
         };
 
-        // --- MAIN APP ---
         function App() {
             const [user, setUser] = useState(null);
             const [currentView, setCurrentView] = useState('laporan_baru');
+            const [editingReport, setEditingReport] = useState(null);
             const [toast, setToast] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [reports, setReports] = useState([]);
@@ -160,13 +171,16 @@
                         if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid);
                         if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru);
                     }
-                });
+                }, (err) => console.error("Config fetch error:", err));
+                
                 const unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
                     setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                });
+                }, (err) => console.error("Reports fetch error:", err));
+                
                 const unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
                     setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                });
+                }, (err) => console.error("Attendance fetch error:", err));
+                
                 return () => { unsubConfig(); unsubReports(); unsubAttendance(); };
             }, [user]);
 
@@ -205,13 +219,15 @@
             }, [csvLinkMurid, csvLinkGuru]);
 
             const LaporanForm = () => {
-                const [form, setForm] = useState({
+                const initialForm = editingReport || {
                     perjumpaan: '1', unit: activities[0] || '', tarikh: '', tajuk: '', aktiviti: '', 
                     laporanMurid: null, rumusan: '', kemahiranBerfikir: '', 
                     kataKerjaKbat: '', ulasanKbat: '', disediakanOleh: '', namaDisediakan: '', 
                     ulasan1: '', ulasan2: '', ulasan3: '', ulasan4: '', ulasan5: '', ulasan6: '',
                     gambar1: null, gambar2: null, gambar3: null, gambar4: null, gambar5: null, gambar6: null
-                });
+                };
+                
+                const [form, setForm] = useState(initialForm);
 
                 const KEMAHIRAN_BERFIKIR_OPTS = ['', '1. MENGAPLIKASI', '2. MENGANALISIS', '3. MENILAI', '4. MENCIPTA'];
                 const KATA_KERJA_KBAT_OPTS = [
@@ -236,10 +252,18 @@
                 const handleSubmit = async (e) => {
                     e.preventDefault();
                     try {
-                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), {
-                            ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null, eSignGuru: null
-                        });
-                        showToast('Laporan berjaya disimpan!');
+                        if (editingReport) {
+                            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', editingReport.id), {
+                                ...form, timestamp: Date.now()
+                            });
+                            showToast('Laporan berjaya dikemaskini!');
+                        } else {
+                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), {
+                                ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null, eSignGuru: null
+                            });
+                            showToast('Laporan berjaya disimpan!');
+                        }
+                        setEditingReport(null);
                         setCurrentView('rekod_laporan');
                     } catch (err) { showToast('Ralat simpan data.'); }
                 };
@@ -263,10 +287,12 @@
                 );
 
                 return (
-                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100">
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.PenTool /> Daftar Laporan Mingguan</h2>
+                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Icons.PenTool /> {editingReport ? 'Kemaskini Laporan' : 'Daftar Laporan Mingguan'}
+                        </h2>
                         <form onSubmit={handleSubmit} className="space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-slate-700">
                                 <div>
                                     <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Perjumpaan</label>
                                     <select className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.perjumpaan} onChange={e => setForm({...form, perjumpaan: e.target.value})}>
@@ -281,27 +307,18 @@
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tarikh*</label>
-                                    <input type="date" required className="w-full p-3 border rounded-lg outline-none bg-white" value={form.tarikh} onChange={e => setForm({...form, tarikh: e.target.value})} />
+                                    <input type="date" required className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.tarikh} onChange={e => setForm({...form, tarikh: e.target.value})} />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tajuk Aktiviti*</label>
-                                    <input type="text" required className="w-full p-3 border rounded-lg outline-none bg-white" placeholder="Contoh: Latihan Kawad Kaki" value={form.tajuk} onChange={e => setForm({...form, tajuk: e.target.value})} />
+                                    <input type="text" required className="w-full p-3 border rounded-lg outline-none bg-white font-bold" placeholder="Contoh: Latihan Kawad Kaki" value={form.tajuk} onChange={e => setForm({...form, tajuk: e.target.value})} />
                                 </div>
                             </div>
-
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Huraian Aktiviti*</label>
-                                    <textarea rows="4" required className="w-full p-3 border rounded-lg outline-none bg-slate-50 focus:bg-white transition" value={form.aktiviti} onChange={e => setForm({...form, aktiviti: e.target.value})} />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Rumusan / Refleksi*</label>
-                                    <textarea rows="3" required className="w-full p-3 border rounded-lg outline-none bg-slate-50 focus:bg-white transition" value={form.rumusan} onChange={e => setForm({...form, rumusan: e.target.value})} />
-                                </div>
+                                <textarea rows="4" placeholder="Huraian Aktiviti*" required className="w-full p-4 border rounded-xl outline-none bg-slate-50 focus:bg-white transition" value={form.aktiviti} onChange={e => setForm({...form, aktiviti: e.target.value})} />
+                                <textarea rows="3" placeholder="Rumusan / Refleksi*" required className="w-full p-4 border rounded-xl outline-none bg-slate-50 focus:bg-white transition" value={form.rumusan} onChange={e => setForm({...form, rumusan: e.target.value})} />
                             </div>
-
                             <ImageUpload label="Laporan Murid (Lampiran)" field="laporanMurid" />
-
                             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-4">
                                 <h3 className="font-bold text-blue-900 text-xs uppercase tracking-widest">Elemen KBAT</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -314,9 +331,8 @@
                                 </div>
                                 <input type="text" required className="w-full p-3 border rounded-lg bg-white outline-none text-sm" placeholder="Ulasan elemen KBAT..." value={form.ulasanKbat} onChange={e => setForm({...form, ulasanKbat: e.target.value})} />
                             </div>
-
                             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-6">
-                                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-widest">Dokumentasi Bergambar (Maks 6)</h3>
+                                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-widest">Dokumentasi Bergambar (Maksimum 6)</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {[1, 2, 3, 4, 5, 6].map(num => (
                                         <div key={num} className="bg-white p-3 rounded-xl shadow-sm space-y-3">
@@ -326,16 +342,21 @@
                                     ))}
                                 </div>
                             </div>
-
                             <div className="pt-6 border-t">
-                                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Sila Pilih Nama Anda (Guru Penasihat)</label>
+                                <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-widest">Sila Pilih Nama Anda (Guru Penasihat)</label>
                                 <select required className="w-full p-4 border rounded-xl bg-blue-50 font-black uppercase text-xs text-blue-700" value={form.namaDisediakan} onChange={e => setForm({...form, namaDisediakan: e.target.value, disediakanOleh: e.target.value})}>
                                     <option value="">-- SILA PILIH NAMA GURU --</option>
                                     {teachers.map(t => <option key={t} value={t}>{t}</option>)}
                                 </select>
                             </div>
-
-                            <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition transform hover:scale-[1.01] uppercase tracking-[0.2em]">Simpan Laporan Cloud</button>
+                            <div className="flex gap-4">
+                                {editingReport && (
+                                    <button type="button" onClick={() => { setEditingReport(null); setCurrentView('rekod_laporan'); }} className="flex-1 py-5 bg-slate-200 text-slate-700 font-black rounded-2xl uppercase tracking-widest">Batal</button>
+                                )}
+                                <button type="submit" className="flex-[2] py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition transform hover:scale-[1.01] uppercase tracking-[0.2em]">
+                                    {editingReport ? 'Kemaskini Laporan' : 'Simpan Laporan Cloud'}
+                                </button>
+                            </div>
                         </form>
                     </div>
                 );
@@ -344,8 +365,9 @@
             const RekodLaporan = () => {
                 const [selected, setSelected] = useState(null);
                 const [isSigning, setIsSigning] = useState(false);
-                const [signingType, setSigningType] = useState(null); // 'guru' or 'admin'
+                const [signingType, setSigningType] = useState(null); 
                 const [filterClub, setFilterClub] = useState('SEMUA');
+                const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
                 const canvasRef = useRef(null);
 
                 const filteredReports = useMemo(() => {
@@ -353,16 +375,12 @@
                     return reports.filter(r => r.unit === filterClub);
                 }, [reports, filterClub]);
 
-                const startSigning = (type) => {
-                    setSigningType(type);
-                    setIsSigning(true);
-                };
+                const startSigning = (type) => { setSigningType(type); setIsSigning(true); };
 
                 const saveSign = async () => {
                     if (!canvasRef.current) return;
                     const data = canvasRef.current.toDataURL('image/png');
                     const field = signingType === 'guru' ? 'eSignGuru' : 'eSignPenyemak';
-                    
                     try {
                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', selected.id), { [field]: data });
                         setSelected({...selected, [field]: data});
@@ -371,11 +389,36 @@
                     } catch (e) { showToast('Gagal simpan e-sign.'); }
                 };
 
+                const handleDelete = async (id) => {
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', id));
+                        showToast('Laporan telah dipadam.');
+                        setShowDeleteConfirm(null);
+                        setSelected(null);
+                    } catch (e) { showToast('Gagal memadam.'); }
+                };
+
+                const handleEdit = (report) => {
+                    setEditingReport(report);
+                    setCurrentView('laporan_baru');
+                };
+
                 const clearSign = () => {
-                    if (!canvasRef.current) return;
                     const canvas = canvasRef.current;
                     const ctx = canvas.getContext('2d');
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
+                };
+
+                const downloadPDF = () => {
+                    const element = document.getElementById('pdf-content');
+                    const opt = {
+                        margin: 10,
+                        filename: `Laporan_${selected.unit}_${selected.tarikh}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+                    html2pdf().from(element).set(opt).save();
                 };
 
                 useEffect(() => {
@@ -386,149 +429,121 @@
                     ctx.lineCap = 'round';
                     ctx.strokeStyle = '#000';
                     let drawing = false;
-
                     const getPos = (e) => {
                         const rect = canvas.getBoundingClientRect();
-                        let clientX, clientY;
-                        if (e.touches && e.touches.length > 0) {
-                            clientX = e.touches[0].clientX;
-                            clientY = e.touches[0].clientY;
-                        } else {
-                            clientX = e.clientX;
-                            clientY = e.clientY;
-                        }
+                        let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                        let clientY = e.touches ? e.touches[0].clientY : e.clientY;
                         return { x: clientX - rect.left, y: clientY - rect.top };
                     };
-
-                    const move = (e) => {
-                        if (!drawing) return;
-                        e.preventDefault();
-                        const pos = getPos(e);
-                        ctx.lineTo(pos.x, pos.y);
-                        ctx.stroke();
-                    };
-
-                    const start = (e) => {
-                        e.preventDefault();
-                        drawing = true;
-                        const pos = getPos(e);
-                        ctx.beginPath();
-                        ctx.moveTo(pos.x, pos.y);
-                    };
-
+                    const move = (e) => { if (!drawing) return; e.preventDefault(); const pos = getPos(e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); };
+                    const start = (e) => { e.preventDefault(); drawing = true; const pos = getPos(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); };
                     const end = () => { drawing = false; ctx.closePath(); };
-
-                    canvas.addEventListener('mousedown', start);
-                    canvas.addEventListener('mousemove', move);
-                    window.addEventListener('mouseup', end);
-                    canvas.addEventListener('touchstart', start, { passive: false });
-                    canvas.addEventListener('touchmove', move, { passive: false });
-                    canvas.addEventListener('touchend', end);
-
+                    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+                    canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); canvas.addEventListener('touchend', end);
                     return () => {
-                        canvas.removeEventListener('mousedown', start);
-                        canvas.removeEventListener('mousemove', move);
-                        window.removeEventListener('mouseup', end);
-                        canvas.removeEventListener('touchstart', start);
-                        canvas.removeEventListener('touchmove', move);
-                        canvas.removeEventListener('touchend', end);
+                        canvas.removeEventListener('mousedown', start); canvas.removeEventListener('mousemove', move); window.removeEventListener('mouseup', end);
+                        canvas.removeEventListener('touchstart', start); canvas.removeEventListener('touchmove', move); canvas.removeEventListener('touchend', end);
                     };
                 }, [isSigning]);
 
                 if (selected) {
                     const picList = [1, 2, 3, 4, 5, 6].map(n => ({ img: selected[`gambar${n}`], ulasan: selected[`ulasan${n}`] })).filter(x => x.img);
                     return (
-                        <div className="bg-white p-4 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative">
-                            <div className="flex justify-between items-center mb-8 print:hidden">
+                        <div className="bg-white p-4 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in fade-in duration-300">
+                            <div className="flex flex-wrap justify-between items-center gap-2 mb-8 print:hidden text-slate-700">
                                 <button onClick={()=>setSelected(null)} className="text-blue-600 font-bold flex items-center gap-1">&larr; KEMBALI</button>
-                                <button onClick={()=>window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK PDF</button>
+                                <div className="flex flex-wrap gap-2">
+                                    <button onClick={() => handleEdit(selected)} className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-blue-200"><Icons.Edit /> KEMASKINI</button>
+                                    <button onClick={() => setShowDeleteConfirm(selected.id)} className="bg-red-50 text-red-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-red-200"><Icons.Trash /> PADAM</button>
+                                    <button onClick={downloadPDF} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg"><Icons.Download /> SIMPAN PDF</button>
+                                    <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK</button>
+                                </div>
                             </div>
 
-                            <div className="text-center mb-8">
-                                <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="h-24 mx-auto mb-4" />
-                                <h1 className="text-2xl font-bold uppercase underline text-slate-900">LAPORAN {selected.unit}</h1>
-                                <p className="font-bold mt-1 text-slate-800">SK PENDIDIKAN KHAS MIRI</p>
-                            </div>
-                            
-                            <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
-                                <tbody>
-                                    <tr>
-                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td>
-                                        <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td>
-                                    </tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
-                                    <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
-                                    <tr>
-                                        <td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Elemen KBAT</td>
-                                        <td colSpan="3" className="border-2 border-slate-800 p-2">
-                                            <div className="font-bold underline uppercase">{selected.kemahiranBerfikir} • {selected.kataKerjaKbat}</div>
-                                            <div className="mt-1 italic">{selected.ulasanKbat}</div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-
-                            {selected.laporanMurid && (
-                                <div className="mt-6 border-2 border-slate-800 p-2 break-inside-avoid">
-                                    <h4 className="font-bold uppercase text-[10px] mb-2 bg-slate-50 p-1 border-b-2 border-slate-800 text-center">Lampiran Laporan Murid</h4>
-                                    <img src={selected.laporanMurid} className="max-h-96 mx-auto object-contain" />
+                            <div id="pdf-content" className="p-4 md:p-10 border border-slate-100">
+                                <div className="text-center mb-8">
+                                    <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="h-24 mx-auto mb-4" />
+                                    <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
+                                    <p className="font-bold mt-1">SK PENDIDIKAN KHAS MIRI</p>
                                 </div>
-                            )}
-
-                            {picList.length > 0 && (
-                                <div className="mt-6 space-y-4 break-inside-avoid">
-                                    <h4 className="font-bold uppercase text-[10px] bg-slate-50 p-1 border-2 border-slate-800 text-center uppercase tracking-widest">Dokumentasi Bergambar</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        {picList.map((item, idx) => (
-                                            <div key={idx} className="border-2 border-slate-800 p-2 text-center bg-white shadow-sm">
-                                                <img src={item.img} className="h-32 w-full object-cover border border-slate-200 mb-2" />
-                                                <p className="text-[9px] italic font-bold uppercase">{item.ulasan || 'Tiada Ulasan'}</p>
-                                            </div>
-                                        ))}
+                                <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
+                                    <tbody>
+                                        <tr>
+                                            <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td>
+                                            <td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td>
+                                        </tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
+                                        <tr>
+                                            <td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Elemen KBAT</td>
+                                            <td colSpan="3" className="border-2 border-slate-800 p-2">
+                                                <div className="font-bold underline uppercase">{selected.kemahiranBerfikir} • {selected.kataKerjaKbat}</div>
+                                                <div className="mt-1 italic">{selected.ulasanKbat}</div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                {selected.laporanMurid && (
+                                    <div className="mt-6 border-2 border-slate-800 p-2 break-inside-avoid">
+                                        <h4 className="font-bold uppercase text-[10px] mb-2 bg-slate-50 p-1 border-b-2 border-slate-800 text-center">Lampiran Laporan Murid</h4>
+                                        <img src={selected.laporanMurid} className="max-h-96 mx-auto object-contain" />
                                     </div>
-                                </div>
-                            )}
-
-                            <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
-                                <div className="w-64">
-                                    <p className="text-[10px] font-bold uppercase mb-12">Disediakan oleh (Guru Pembimbing),</p>
-                                    <div className="h-16 flex items-center justify-center mb-1">
-                                        {selected.eSignGuru ? (
-                                            <img src={selected.eSignGuru} className="h-full object-contain" />
-                                        ) : (
-                                            <button onClick={()=>startSigning('guru')} className="bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">Klik T/Tangan Guru</button>
-                                        )}
+                                )}
+                                {picList.length > 0 && (
+                                    <div className="mt-6 space-y-4 break-inside-avoid">
+                                        <h4 className="font-bold uppercase text-[10px] bg-slate-50 p-1 border-2 border-slate-800 text-center uppercase tracking-widest">Dokumentasi Bergambar</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {picList.map((item, idx) => (
+                                                <div key={idx} className="border-2 border-slate-800 p-2 text-center bg-white shadow-sm">
+                                                    <img src={item.img} className="h-40 w-full object-cover border border-slate-200 mb-2" />
+                                                    <p className="text-[9px] italic font-bold uppercase">{item.ulasan || 'Tiada Ulasan'}</p>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900 text-[11px]">{selected.namaDisediakan}</p>
-                                    <p className="text-[9px]">Guru Pembimbing</p>
-                                </div>
-                                <div className="w-64">
-                                    <p className="text-[10px] font-bold uppercase mb-12 text-slate-800">Disemak oleh (Pentadbir),</p>
-                                    <div className="h-16 flex items-center justify-center mb-1">
-                                        {selected.eSignPenyemak ? (
-                                            <img src={selected.eSignPenyemak} className="h-full object-contain" />
-                                        ) : (
-                                            <button onClick={()=>startSigning('admin')} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">Klik T/Tangan Pengesahan</button>
-                                        )}
+                                )}
+                                <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
+                                    <div className="w-64">
+                                        <p className="text-[10px] font-bold uppercase mb-12">Disediakan oleh (Guru Pembimbing),</p>
+                                        <div className="h-16 flex items-center justify-center mb-1">
+                                            {selected.eSignGuru ? <img src={selected.eSignGuru} className="h-full object-contain" /> : <button onClick={()=>startSigning('guru')} className="bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">E-SIGN GURU</button>}
+                                        </div>
+                                        <p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900 text-[11px]">{selected.namaDisediakan}</p>
                                     </div>
-                                    <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px] text-slate-900">ENCIK SALIHIN BIN AHMAD</p>
-                                    <p className="text-[9px] font-bold text-slate-700">Penolong Kanan Kokurikulum</p>
-                                    <p className="text-[9px] text-slate-500">SKPK Miri</p>
+                                    <div className="w-64">
+                                        <p className="text-[10px] font-bold uppercase mb-12 text-slate-800">Disemak oleh (Pentadbir),</p>
+                                        <div className="h-16 flex items-center justify-center mb-1">
+                                            {selected.eSignPenyemak ? <img src={selected.eSignPenyemak} className="h-full object-contain" /> : <button onClick={()=>startSigning('admin')} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">E-SIGN PENGESAHAN</button>}
+                                        </div>
+                                        <p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px] text-slate-900">ENCIK SALIHIN BIN AHMAD</p>
+                                        <p className="text-[9px] font-bold text-slate-700">Penolong Kanan Kokurikulum</p>
+                                    </div>
                                 </div>
                             </div>
 
                             {isSigning && (
                                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
                                     <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-                                        <h3 className="font-black mb-4 uppercase text-center text-blue-600">
-                                            {signingType === 'guru' ? 'Tandatangan Guru Pembimbing' : 'Tandatangan Pengesahan'}
-                                        </h3>
+                                        <h3 className="font-black mb-4 uppercase text-center text-blue-600">{signingType === 'guru' ? 'Guru Pembimbing' : 'Tandatangan Pengesahan'}</h3>
                                         <canvas ref={canvasRef} width="300" height="200" className="signature-pad border-2 border-dashed border-slate-300 bg-slate-50 w-full rounded-lg" />
                                         <div className="flex gap-2 mt-6">
-                                            <button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg hover:bg-slate-100">BATAL</button>
-                                            <button onClick={clearSign} className="flex-1 py-2 font-bold border rounded-lg hover:bg-slate-100">PADAM</button>
+                                            <button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg">BATAL</button>
+                                            <button onClick={clearSign} className="flex-1 py-2 font-bold border rounded-lg">PADAM</button>
                                             <button onClick={saveSign} className="flex-1 py-2 font-black bg-blue-600 text-white rounded-lg shadow-lg">SIMPAN</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {showDeleteConfirm && (
+                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
+                                    <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl text-center">
+                                        <div className="text-red-500 text-5xl mb-4">⚠️</div>
+                                        <h3 className="font-black text-xl mb-2">Padam Laporan?</h3>
+                                        <p className="text-slate-500 text-sm mb-6">Tindakan ini tidak boleh dikembalikan.</p>
+                                        <div className="flex gap-3">
+                                            <button onClick={() => setShowDeleteConfirm(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-xl">Batal</button>
+                                            <button onClick={() => handleDelete(showDeleteConfirm)} className="flex-1 py-3 font-black bg-red-600 text-white rounded-xl shadow-lg">Ya, Padam</button>
                                         </div>
                                     </div>
                                 </div>
@@ -545,22 +560,17 @@
                                 <button key={club} onClick={()=>setFilterClub(club)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClub === club ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{club}</button>
                             ))}
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredReports.length === 0 ? (
-                                <div className="col-span-full p-20 text-center text-slate-400 italic bg-white border-2 border-dashed rounded-3xl">Tiada rekod laporan untuk kategori yang dipilih.</div>
-                            ) : (
-                                filteredReports.map(r => (
-                                    <div key={r.id} onClick={()=>setSelected(r)} className="p-5 bg-white border rounded-2xl shadow-sm hover:border-blue-500 transition group cursor-pointer border-l-8 border-l-blue-500">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>
-                                            {r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}
-                                        </div>
-                                        <h3 className="font-black text-slate-800 group-hover:text-blue-600 transition truncate">{r.tajuk}</h3>
-                                        <p className="text-[10px] text-slate-400 font-bold mt-2">{r.tarikh} • {r.namaDisediakan}</p>
+                            {filteredReports.map(r => (
+                                <div key={r.id} onClick={()=>setSelected(r)} className="p-5 bg-white border rounded-2xl shadow-sm hover:border-blue-500 transition group cursor-pointer border-l-8 border-l-blue-500 animate-in fade-in duration-300">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>
+                                        {r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}
                                     </div>
-                                ))
-                            )}
+                                    <h3 className="font-black text-slate-800 group-hover:text-blue-600 transition truncate uppercase">{r.tajuk}</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase">{r.tarikh} • {r.namaDisediakan}</p>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 );
@@ -569,72 +579,70 @@
             const KehadiranView = () => {
                 const [filterClubAtt, setFilterClubAtt] = useState('SEMUA');
                 const [selectedRecord, setSelectedRecord] = useState(null);
+                const [showDeleteConfirmAtt, setShowDeleteConfirmAtt] = useState(null);
 
                 const filteredAtt = useMemo(() => {
                     if (filterClubAtt === 'SEMUA') return attendanceRecords;
                     return attendanceRecords.filter(r => r.aktiviti === filterClubAtt);
                 }, [attendanceRecords, filterClubAtt]);
 
+                const handleDeleteAtt = async (id) => {
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', id));
+                        showToast('Rekod kehadiran dipadam.');
+                        setShowDeleteConfirmAtt(null); setSelectedRecord(null);
+                    } catch (e) { showToast('Gagal memadam.'); }
+                };
+
                 if (selectedRecord) {
                     const act = selectedRecord.aktiviti?.toUpperCase();
                     const clubStudents = students.filter(s => s.act1 === act || s.act2 === act || s.act3 === act);
                     return (
-                        <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative">
-                            <button onClick={()=>setSelectedRecord(null)} className="mb-6 text-blue-600 font-bold print:hidden flex items-center gap-1">&larr; KEMBALI</button>
+                        <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in zoom-in duration-300">
+                            <div className="flex justify-between items-center mb-8 print:hidden">
+                                <button onClick={()=>setSelectedRecord(null)} className="text-blue-600 font-bold">&larr; KEMBALI</button>
+                                <div className="flex gap-2 text-slate-700">
+                                    <button onClick={() => setShowDeleteConfirmAtt(selectedRecord.id)} className="bg-red-50 text-red-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-red-200"><Icons.Trash /> PADAM</button>
+                                    <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK</button>
+                                </div>
+                            </div>
                             <div className="text-center mb-8">
-                                <h1 className="text-2xl font-black uppercase underline text-slate-900">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1>
-                                <p className="font-bold mt-2 text-slate-800 uppercase">TARIKH: {selectedRecord.tarikh}</p>
+                                <h1 className="text-2xl font-black uppercase underline">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1>
+                                <p className="font-bold mt-2 uppercase">TARIKH: {selectedRecord.tarikh}</p>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse border-2 border-slate-800 text-sm">
-                                    <thead>
-                                        <tr className="bg-slate-100">
-                                            <th className="border-2 border-slate-800 p-2 w-16">Bil</th>
-                                            <th className="border-2 border-slate-800 p-2 text-left">Nama Penuh Murid</th>
-                                            <th className="border-2 border-slate-800 p-2 w-32 text-center">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {clubStudents.map((s, idx) => (
-                                            <tr key={s.id}>
-                                                <td className="border-2 border-slate-800 p-2 text-center">{idx + 1}</td>
-                                                <td className="border-2 border-slate-800 p-2 font-bold uppercase text-slate-800">{s.name}</td>
-                                                <td className={`border-2 border-slate-800 p-2 text-center font-black ${selectedRecord.records[s.id] ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {selectedRecord.records[s.id] ? 'HADIR' : 'TH'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <button onClick={()=>window.print()} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl print:hidden flex items-center justify-center gap-2 uppercase tracking-widest hover:bg-black transition"><Icons.Printer /> Cetak Senarai Kehadiran</button>
+                            <table className="w-full border-collapse border-2 border-slate-800 text-sm">
+                                <thead><tr className="bg-slate-100"><th className="border-2 border-slate-800 p-2 w-16">Bil</th><th className="border-2 border-slate-800 p-2 text-left">Nama Penuh Murid</th><th className="border-2 border-slate-800 p-2 w-32 text-center">Status</th></tr></thead>
+                                <tbody>{clubStudents.map((s, idx) => (
+                                    <tr key={s.id}><td className="border-2 border-slate-800 p-2 text-center">{idx + 1}</td><td className="border-2 border-slate-800 p-2 font-bold uppercase">{s.name}</td><td className={`border-2 border-slate-800 p-2 text-center font-black ${selectedRecord.records[s.id] ? 'text-green-600' : 'text-red-600'}`}>{selectedRecord.records[s.id] ? 'HADIR' : 'TH'}</td></tr>
+                                ))}</tbody>
+                            </table>
+                            {showDeleteConfirmAtt && (
+                                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden">
+                                    <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl text-center">
+                                        <h3 className="font-black text-xl mb-2 text-slate-800">Padam Kehadiran?</h3>
+                                        <div className="flex gap-3 mt-6"><button onClick={() => setShowDeleteConfirmAtt(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-xl">Batal</button><button onClick={() => handleDeleteAtt(showDeleteConfirmAtt)} className="flex-1 py-3 font-black bg-red-600 text-white rounded-xl">Ya, Padam</button></div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 }
 
                 return (
-                    <div className="space-y-6">
-                        <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden">
+                    <div className="space-y-6 animate-in slide-in-from-bottom duration-500">
+                        <div className="flex flex-wrap gap-2 mb-6 bg-white p-3 rounded-2xl border shadow-sm print:hidden text-slate-700">
                             <button onClick={()=>setFilterClubAtt('SEMUA')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClubAtt === 'SEMUA' ? 'bg-green-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>SEMUA</button>
                             {activities.map(club => (
                                 <button key={club} onClick={()=>setFilterClubAtt(club)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClubAtt === club ? 'bg-green-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{club}</button>
                             ))}
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredAtt.length === 0 ? (
-                                <div className="col-span-full p-20 text-center text-slate-400 italic bg-white border-2 border-dashed rounded-3xl uppercase font-black text-xs tracking-widest">Tiada rekod kehadiran untuk kategori ini.</div>
-                            ) : (
-                                filteredAtt.map(r => (
-                                    <div key={r.id} onClick={()=>setSelectedRecord(r)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-lg transition-all border-l-[10px] border-l-green-500 cursor-pointer group">
-                                        <div>
-                                            <p className="font-black text-xs uppercase text-slate-800 leading-none mb-2 group-hover:text-green-600 transition-colors">{r.aktiviti}</p>
-                                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{r.tarikh}</p>
-                                        </div>
-                                        <div className="text-slate-200 group-hover:text-green-500 transition-colors"><Icons.ClipboardList /></div>
-                                    </div>
-                                ))
-                            )}
+                            {filteredAtt.map(r => (
+                                <div key={r.id} onClick={()=>setSelectedRecord(r)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-lg transition-all border-l-[10px] border-l-green-500 cursor-pointer group animate-in fade-in duration-300">
+                                    <div><p className="font-black text-xs uppercase text-slate-800 mb-2 group-hover:text-green-600 transition-colors uppercase">{r.aktiviti}</p><p className="text-[10px] text-slate-400 font-black uppercase">{r.tarikh}</p></div>
+                                    <div className="text-slate-200 group-hover:text-green-500 transition-colors"><Icons.ClipboardList /></div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 );
@@ -644,46 +652,26 @@
                 const [tarikh, setTarikh] = useState('');
                 const [unit, setUnit] = useState(activities[0] || '');
                 const [att, setAtt] = useState({});
-
-                const filtered = useMemo(() => {
-                    const u = unit.toUpperCase();
-                    return students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u);
-                }, [students, unit]);
-
-                useEffect(() => {
-                    const initial = {};
-                    filtered.forEach(s => initial[s.id] = true);
-                    setAtt(initial);
-                }, [filtered]);
-
+                const filtered = useMemo(() => { const u = unit.toUpperCase(); return students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u); }, [students, unit]);
+                useEffect(() => { const initial = {}; filtered.forEach(s => initial[s.id] = true); setAtt(initial); }, [filtered]);
                 const saveAtt = async () => {
                     if (!tarikh) return showToast('Sila pilih tarikh.');
-                    try {
-                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), { 
-                            tarikh, aktiviti: unit, records: att, timestamp: Date.now(), createdBy: user.uid 
-                        });
-                        showToast('Kehadiran disimpan!'); setCurrentView('rekod_kehadiran');
-                    } catch (e) { showToast('Ralat simpan.'); }
+                    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), { tarikh, aktiviti: unit, records: att, timestamp: Date.now(), createdBy: user.uid }); showToast('Kehadiran disimpan!'); setCurrentView('rekod_kehadiran'); } catch (e) { showToast('Ralat simpan.'); }
                 };
-
                 return (
-                    <div className="bg-white p-6 md:p-8 rounded-2xl border shadow-sm">
-                        <h2 className="text-2xl font-black text-green-600 flex items-center gap-3 uppercase"><Icons.Users /> KEHADIRAN</h2>
+                    <div className="bg-white p-6 md:p-8 rounded-2xl border shadow-sm animate-in slide-in-from-left duration-500">
+                        <h2 className="text-2xl font-black text-green-600 mb-6 flex items-center gap-3 uppercase"><Icons.Users /> KEHADIRAN</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             <input type="date" className="p-3 border rounded-xl font-bold bg-slate-50" value={tarikh} onChange={e=>setTarikh(e.target.value)} />
-                            <select className="p-3 border rounded-xl bg-slate-50 font-black uppercase text-xs" value={unit} onChange={e=>setUnit(e.target.value)}>
-                                {activities.map(a => <option key={a} value={a}>{a}</option>)}
-                            </select>
+                            <select className="p-3 border rounded-xl bg-slate-50 font-black uppercase text-xs text-slate-700" value={unit} onChange={e=>setUnit(e.target.value)}>{activities.map(a => <option key={a} value={a}>{a}</option>)}</select>
                         </div>
                         <div className="space-y-2 border rounded-xl p-2 divide-y">
-                            {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 italic font-bold">Pilih unit untuk melihat senarai nama.</p> : 
-                                filtered.map(s => (
-                                    <div key={s.id} onClick={()=>setAtt({...att, [s.id]: !att[s.id]})} className={`p-4 flex justify-between items-center cursor-pointer transition rounded-lg ${att[s.id] ? 'bg-green-50' : 'bg-red-50'}`}>
-                                        <span className="font-bold uppercase text-xs">{s.name}</span>
-                                        {att[s.id] ? <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Hadir</span> : <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">TH</span>}
-                                    </div>
-                                ))
-                            }
+                            {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 font-bold italic">Sila muat data dari Google Sheets di tab Tetapan.</p> : filtered.map(s => (
+                                <div key={s.id} onClick={()=>setAtt({...att, [s.id]: !att[s.id]})} className={`p-4 flex justify-between items-center cursor-pointer transition rounded-lg ${att[s.id] ? 'bg-green-50' : 'bg-red-50'}`}>
+                                    <span className="font-bold uppercase text-xs text-slate-700">{s.name}</span>
+                                    {att[s.id] ? <span className="bg-green-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Hadir</span> : <span className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">TH</span>}
+                                </div>
+                            ))}
                         </div>
                         <button onClick={saveAtt} className="mt-8 w-full py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase tracking-widest hover:bg-black transition">Simpan Kehadiran ({filtered.length} Murid)</button>
                     </div>
@@ -696,45 +684,17 @@
                     const u = sel.toUpperCase();
                     const list = students.filter(s => s.act1 === u || s.act2 === u || s.act3 === u);
                     const records = attendanceRecords.filter(r => r.aktiviti === sel);
-                    return list.map(s => {
-                        let present = 0;
-                        records.forEach(r => { if (r.records[s.id]) present++; });
-                        return { ...s, present, total: records.length };
-                    });
+                    return list.map(s => { let present = 0; records.forEach(r => { if (r.records[s.id]) present++; }); return { ...s, present, total: records.length }; });
                 }, [students, attendanceRecords, sel]);
-
                 return (
-                    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2"><Icons.PieChart /> Analisis Kehadiran</h2>
-                            <select className="p-2 border rounded-lg text-xs font-bold bg-slate-50" value={sel} onChange={e=>setSel(e.target.value)}>
-                                {activities.map(a=><option key={a} value={a}>{a}</option>)}
-                            </select>
-                        </div>
+                    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6 animate-in slide-in-from-right duration-500">
+                        <div className="flex justify-between items-center"><h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2"><Icons.PieChart /> Analisis Kehadiran</h2><select className="p-2 border rounded-lg text-xs font-bold bg-slate-50 text-slate-700" value={sel} onChange={e=>setSel(e.target.value)}>{activities.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
                         <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
-                            <thead className="bg-slate-100">
-                                <tr>
-                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Bil</th>
-                                    <th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
-                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Hadir / Sesi</th>
-                                    <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">%</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {stats.map((s, i) => {
-                                    const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0;
-                                    return (
-                                        <tr key={i}>
-                                            <td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td>
-                                            <td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td>
-                                            <td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td>
-                                            <td className="p-2 border-2 border-slate-800 text-center font-black">
-                                                <span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
+                            <thead className="bg-slate-100"><tr><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Bil</th><th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Hadir / Sesi</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">%</th></tr></thead>
+                            <tbody>{stats.map((s, i) => {
+                                const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0;
+                                return (<tr key={i}><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td><td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td><td className="p-2 border-2 border-slate-800 text-center font-black"><span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span></td></tr>);
+                            })}</tbody>
                         </table>
                     </div>
                 );
@@ -742,88 +702,55 @@
 
             const TetapanData = () => {
                 const [links, setLinks] = useState({ murid: csvLinkMurid, guru: csvLinkGuru });
-                const handleSave = async () => {
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), { csvLinkMurid: links.murid, csvLinkGuru: links.guru });
-                    showToast('Pangkalan data Cloud dikemaskini!');
-                };
+                const handleSave = async () => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), { csvLinkMurid: links.murid, csvLinkGuru: links.guru }); showToast('Pangkalan data Cloud dikemaskini!'); };
                 return (
                     <div className="bg-white p-6 border-2 border-slate-100 rounded-2xl shadow-sm space-y-6">
-                        <h2 className="text-xl font-black uppercase flex items-center gap-2"><Icons.Settings /> Integrasi Google Sheets</h2>
+                        <h2 className="text-xl font-black uppercase flex items-center gap-2 text-slate-700"><Icons.Settings /> Integrasi Google Sheets</h2>
                         <div className="space-y-4">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Murid (Sheet 1)</label>
-                                <input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white transition outline-none" value={links.murid} onChange={e=>setLinks({...links, murid: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Guru (Sheet 2)</label>
-                                <input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white transition outline-none" value={links.guru} onChange={e=>setLinks({...links, guru: e.target.value})} />
-                            </div>
+                            <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Murid (Sheet 1)</label><input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white outline-none" value={links.murid} onChange={e=>setLinks({...links, murid: e.target.value})} /></div>
+                            <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pautan CSV Guru (Sheet 2)</label><input className="w-full p-4 border rounded-xl text-xs font-mono bg-slate-50 focus:bg-white outline-none" value={links.guru} onChange={e=>setLinks({...links, guru: e.target.value})} /></div>
                             <button onClick={handleSave} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase tracking-widest shadow-xl hover:bg-black transition">Kemaskini Pangkalan Data</button>
                         </div>
                     </div>
                 );
             };
 
-            if (isLoading) return (
-                <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest uppercase">
-                    <div className="text-6xl mb-6 animate-pulse">🚀</div>
-                    <div className="text-center">
-                        <h2 className="text-sm font-black mb-2 tracking-[0.2em]">Memuatkan Sistem eKoku Live</h2>
-                        <p className="text-[9px] text-blue-400 font-bold opacity-80 uppercase">SK Pendidikan Khas Miri</p>
-                    </div>
-                </div>
-            );
+            if (isLoading) return <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest uppercase"><div className="text-6xl mb-6 animate-pulse">🚀</div><div className="text-center"><h2 className="text-sm font-black mb-2 tracking-[0.2em]">Memuatkan Sistem eKoku Live</h2><p className="text-[9px] text-blue-400 font-bold opacity-80 uppercase">SK Pendidikan Khas Miri</p></div></div>;
 
             return (
                 <div className="min-h-screen bg-slate-50 flex flex-col max-w-[100vw] overflow-x-hidden border-t-8 border-blue-600">
-                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-50 font-bold text-xs animate-slide-in">{toast}</div>}
-                    
+                    {toast && <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-[1000] font-bold text-xs animate-slide-in">{toast}</div>}
                     <header className="bg-slate-900 text-white print:hidden sticky top-0 z-50 shadow-2xl">
                         <div className="px-6 py-4 flex justify-between items-center border-b border-white/5">
-                            <div>
-                                <h1 className="text-xl font-black tracking-tighter leading-none flex items-center gap-2 uppercase">eKOKU <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase">Live</span></h1>
-                                <p className="text-[10px] font-bold opacity-40 tracking-[0.2em] mt-1.5 uppercase">SK Pendidikan Khas Miri</p>
-                            </div>
+                            <div><h1 className="text-xl font-black tracking-tighter leading-none flex items-center gap-2 uppercase">eKOKU <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase">Live</span></h1><p className="text-[10px] font-bold opacity-40 tracking-[0.2em] mt-1.5 uppercase text-blue-100">SK Pendidikan Khas Miri</p></div>
                             <div className="hidden md:flex text-[10px] font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 uppercase tracking-widest">SISTEM REKOD KOKURIKULUM</div>
                         </div>
                         <nav className="p-1 grid grid-cols-3 md:grid-cols-6 gap-1 bg-white/5 backdrop-blur-md">
                             {Object.entries({
-                                laporan_baru: { label: 'Borang', icon: Icons.PenTool },
+                                laporan_baru: { label: editingReport ? 'Kemaskini' : 'Borang', icon: Icons.PenTool },
                                 rekod_laporan: { label: 'Laporan', icon: Icons.Archive },
                                 kehadiran_baru: { label: 'Hadir', icon: Icons.Users },
                                 rekod_kehadiran: { label: 'Senarai', icon: Icons.ClipboardList },
                                 rumusan: { label: 'Analisis', icon: Icons.PieChart },
                                 tetapan: { label: 'Set', icon: Icons.Settings }
                             }).map(([id, item]) => (
-                                <button key={id} onClick={() => setCurrentView(id)} className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${currentView === id ? 'bg-blue-600 text-white shadow-lg scale-95' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}>
-                                    <item.icon /><span className="text-[9px] mt-1.5 font-bold uppercase tracking-tighter">{item.label}</span>
-                                </button>
+                                <button key={id} onClick={() => { if(id !== 'laporan_baru') setEditingReport(null); setCurrentView(id); }} className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${currentView === id ? 'bg-blue-600 text-white shadow-lg scale-95' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}><item.icon /><span className="text-[9px] mt-1.5 font-bold uppercase tracking-tighter">{item.label}</span></button>
                             ))}
                         </nav>
                     </header>
-
                     <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full mb-20">
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                            {currentView === 'laporan_baru' && <LaporanForm />}
-                            {currentView === 'rekod_laporan' && <RekodLaporan />}
-                            {currentView === 'kehadiran_baru' && <KehadiranForm />}
-                            {currentView === 'rekod_kehadiran' && <KehadiranView />}
-                            {currentView === 'rumusan' && <RumusanView />}
-                            {currentView === 'tetapan' && <TetapanData />}
-                        </div>
+                        {currentView === 'laporan_baru' && <LaporanForm />}
+                        {currentView === 'rekod_laporan' && <RekodLaporan />}
+                        {currentView === 'kehadiran_baru' && <KehadiranForm />}
+                        {currentView === 'rekod_kehadiran' && <KehadiranView />}
+                        {currentView === 'rumusan' && <RumusanView />}
+                        {currentView === 'tetapan' && <TetapanData />}
                     </main>
-
-                    <footer className="p-10 text-center border-t border-slate-100 print:hidden bg-white/50">
-                        <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.4em] opacity-60">
-                            Sistem eKoku Digital &copy; 2024 SKPK MIRI • Sarawak Smart School Project
-                        </p>
-                    </footer>
+                    <footer className="p-10 text-center border-t border-slate-100 print:hidden bg-white/50"><p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.4em] opacity-60">Sistem eKoku Digital &copy; 2024 SKPK MIRI • Sarawak Smart School Project</p></footer>
                 </div>
             );
         }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />);
     </script>
 </body>
 </html>
