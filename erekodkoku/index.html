@@ -20,6 +20,29 @@
             @page { size: A4 portrait; margin: 10mm; }
             .break-inside-avoid { page-break-inside: avoid; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            
+            .single-page-print {
+                max-height: 275mm !important;
+                overflow: hidden !important;
+                box-sizing: border-box !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .single-page-print table {
+                font-size: 9px !important;
+                line-height: 1.1 !important;
+            }
+            .single-page-print th, .single-page-print td {
+                padding: 3px 4px !important;
+            }
+            .single-page-print h2, .single-page-print h3 {
+                font-size: 14px !important;
+                margin-top: 2px !important;
+                margin-bottom: 2px !important;
+            }
+            .single-page-print .card-hide-print {
+                display: none !important;
+            }
         }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
@@ -45,7 +68,6 @@
 
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- KONFIGURASI FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDXh_xTy18MAeWNex2pAbxIU1GmPKFo2pg",
             authDomain: "ekoku-skpk-miri.firebaseapp.com",
@@ -117,6 +139,16 @@
             throw new Error('Gagal muat turun data dari Google Sheets.');
         };
 
+        const formatDate = (dateString) => {
+            if (!dateString) return '';
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                const [year, month, day] = parts;
+                return `${day}/${month}/${year}`;
+            }
+            return dateString;
+        };
+
         function App() {
             const [user, setUser] = useState(null);
             const [currentView, setCurrentView] = useState('laporan_baru');
@@ -134,50 +166,107 @@
             const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
             useEffect(() => {
-                const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+                const initAuth = async () => { 
+                    try { 
+                        await signInAnonymously(auth); 
+                    } catch (e) { 
+                        console.error("Firebase Auth Error:", e); 
+                        showToast("Ralat Pengesahan Cloud. Sila muat semula halaman.");
+                    } 
+                };
                 initAuth();
-                const unsubscribe = onAuthStateChanged(auth, u => { setUser(u); if (u) setIsLoading(false); });
+                const unsubscribe = onAuthStateChanged(auth, u => { 
+                    setUser(u); 
+                    if (u) setIsLoading(false); 
+                }, (error) => {
+                    console.error("Auth State Error:", error);
+                    showToast("Ralat Sesi. Sila muat semula.");
+                });
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
                 if (!user) return;
-                const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), d => {
-                    if (d.exists()) { const data = d.data(); if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid); if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru); }
-                });
-                const unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
-                    setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                });
-                const unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
-                    setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
-                });
-                return () => { unsubConfig(); unsubReports(); unsubAttendance(); };
+                
+                let unsubConfig, unsubReports, unsubAttendance;
+
+                try {
+                    unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), d => {
+                        if (d.exists()) { const data = d.data(); if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid); if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru); }
+                    }, (error) => console.error("Config Snapshot Error:", error));
+
+                    unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
+                        setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                    }, (error) => console.error("Reports Snapshot Error:", error));
+
+                    unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
+                        setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                    }, (error) => console.error("Attendance Snapshot Error:", error));
+                } catch (e) {
+                    console.error("Snapshot Setup Error:", e);
+                }
+
+                return () => { 
+                    if (unsubConfig) unsubConfig(); 
+                    if (unsubReports) unsubReports(); 
+                    if (unsubAttendance) unsubAttendance(); 
+                };
             }, [user]);
 
             useEffect(() => {
                 const syncData = async () => {
                     try {
-                        const mText = await fetchCSVData(csvLinkMurid); const mRows = parseCSV(mText);
-                        let sList = []; let aSet = new Set();
-                        for (let i = 1; i < mRows.length; i++) {
-                            const name = (mRows[i][0] || '').trim(); const act1 = (mRows[i][1] || '').trim().toUpperCase();
-                            const act2 = (mRows[i][2] || '').trim().toUpperCase(); const act3 = (mRows[i][3] || '').trim().toUpperCase();
-                            if (name && name.toLowerCase() !== 'nama murid') {
-                                sList.push({ id: `S${i}`, name, act1, act2, act3 });
-                                if (act1 && act1 !== '-') aSet.add(act1); if (act2 && act2 !== '-') aSet.add(act2); if (act3 && act3 !== '-') aSet.add(act3);
+                        let mText = null;
+                        try {
+                            mText = await fetchCSVData(csvLinkMurid); 
+                        } catch (e) {
+                            console.error("Error fetching student CSV:", e);
+                            showToast("Gagal mengambil data Murid. Semak pautan CSV.");
+                        }
+
+                        if (mText) {
+                            const mRows = parseCSV(mText);
+                            let sList = []; let aSet = new Set();
+                            for (let i = 1; i < mRows.length; i++) {
+                                const name = (mRows[i][0] || '').trim(); const act1 = (mRows[i][1] || '').trim().toUpperCase();
+                                const act2 = (mRows[i][2] || '').trim().toUpperCase(); const act3 = (mRows[i][3] || '').trim().toUpperCase();
+                                if (name && name.toLowerCase() !== 'nama murid') {
+                                    sList.push({ id: `S${i}`, name, act1, act2, act3 });
+                                    if (act1 && act1 !== '-') aSet.add(act1); if (act2 && act2 !== '-') aSet.add(act2); if (act3 && act3 !== '-') aSet.add(act3);
+                                }
                             }
+                            setStudents(sList.sort((a,b) => a.name.localeCompare(b.name)));
+                            if (aSet.size > 0) setActivities(Array.from(aSet).sort());
+                            else setActivities(['TIADA DATA UNIT']);
                         }
-                        setStudents(sList.sort((a,b) => a.name.localeCompare(b.name)));
-                        if (aSet.size > 0) setActivities(Array.from(aSet).sort());
-                        const gText = await fetchCSVData(csvLinkGuru); const gRows = parseCSV(gText);
-                        let gList = [];
-                        for (let i = 1; i < gRows.length; i++) {
-                            const name = (gRows[i][0] || '').trim().toUpperCase(); if (name && name !== 'NAMA GURU') gList.push(name);
+
+                        let gText = null;
+                        try {
+                            gText = await fetchCSVData(csvLinkGuru); 
+                        } catch (e) {
+                             console.error("Error fetching teacher CSV:", e);
+                             showToast("Gagal mengambil data Guru. Semak pautan CSV.");
                         }
-                        setTeachers(gList.sort());
-                    } catch (e) { console.error(e); }
+
+                        if (gText) {
+                            const gRows = parseCSV(gText);
+                            let gList = [];
+                            for (let i = 1; i < gRows.length; i++) {
+                                const name = (gRows[i][0] || '').trim().toUpperCase(); if (name && name !== 'NAMA GURU') gList.push(name);
+                            }
+                            setTeachers(gList.sort());
+                        }
+
+                    } catch (e) { 
+                        console.error("Critical Sync Error:", e); 
+                        showToast("Ralat Sistem: Gagal menyegerak data asas.");
+                    }
                 };
-                syncData();
+                
+                // Only sync if links are not the default initial placeholder
+                if (csvLinkMurid && csvLinkGuru) {
+                     syncData();
+                }
             }, [csvLinkMurid, csvLinkGuru]);
 
             const LaporanForm = () => {
@@ -232,7 +321,6 @@
                             </div>
                             <ImageBox label="Laporan Murid (Lampiran)" field="laporanMurid" />
                             
-                            {/* ELEMEN KBAT */}
                             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-4">
                                 <h3 className="font-bold text-blue-900 text-xs uppercase tracking-widest">Elemen KBAT</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -242,7 +330,6 @@
                                 <input type="text" required className="w-full p-3 border rounded-lg bg-white outline-none text-sm text-slate-700" placeholder="Ulasan elemen KBAT..." value={form.ulasanKbat} onChange={e => setForm({...form, ulasanKbat: e.target.value})} />
                             </div>
 
-                            {/* ELEMEN PIKeBM */}
                             <div className="bg-green-50 p-5 rounded-2xl border border-green-100 space-y-4">
                                 <h3 className="font-bold text-green-900 text-xs uppercase tracking-widest">Elemen PIKeBM</h3>
                                 <select required className="w-full p-3 border rounded-lg bg-white text-sm font-bold text-slate-700" value={form.pikebm} onChange={e => setForm({...form, pikebm: e.target.value})}>
@@ -283,7 +370,7 @@
                 };
                 const handleDelete = async (id) => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', id)); showToast('Dipadam!'); setShowDeleteConfirm(null); setSelected(null); } catch (e) { showToast('Ralat padam.'); } };
                 const downloadPDF = () => {
-                    const el = document.getElementById('pdf-content'); const opt = { margin: 10, filename: `Laporan_${selected.unit}_${selected.tarikh}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+                    const el = document.getElementById('pdf-content'); const opt = { margin: 10, filename: `Laporan_${selected.unit}_${formatDate(selected.tarikh).replace(/\//g, '-')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
                     html2pdf().from(el).set(opt).save();
                 };
                 
@@ -313,14 +400,16 @@
                                 </div>
                             </div>
                             <div id="pdf-content" className="p-4 md:p-10 border border-slate-100">
-                                <div className="text-center mb-8 flex flex-col items-center">
-                                    <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="w-24 h-24 object-contain mb-4" />
-                                    <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
-                                    <p className="font-bold mt-1 uppercase">SK PENDIDIKAN KHAS MIRI</p>
+                                <div className="text-center mb-8 flex flex-col items-center border-b-2 border-slate-100 print:border-slate-800 pb-6">
+                                    <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="w-24 h-24 object-contain mb-2" />
+                                    <h1 className="text-xl font-black uppercase tracking-widest text-slate-900">SK PENDIDIKAN KHAS MIRI</h1>
+                                    <h2 className="text-sm font-bold uppercase mt-2 bg-slate-100 print:bg-transparent print:border-none px-4 py-1 rounded-full border border-slate-300 text-slate-800">
+                                        LAPORAN {selected.unit} • {formatDate(selected.tarikh)}
+                                    </h2>
                                 </div>
                                 <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
                                     <tbody>
-                                        <tr><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{formatDate(selected.tarikh)}</td></tr>
                                         <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
                                         <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
                                         <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
@@ -333,6 +422,9 @@
                                 <div className="mt-16 flex justify-between px-10 text-center break-inside-avoid">
                                     <div className="w-64"><p className="text-[10px] font-bold uppercase mb-12">Disediakan oleh (Guru Pembimbing),</p><div className="h-16 flex items-center justify-center mb-1">{selected.eSignGuru ? <img src={selected.eSignGuru} className="h-full object-contain" /> : <button onClick={()=>{ setSigningType('guru'); setIsSigning(true); }} className="bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">E-SIGN GURU</button>}</div><p className="font-black border-t-2 border-slate-800 pt-1 uppercase text-blue-900 text-[11px]">{selected.namaDisediakan}</p></div>
                                     <div className="w-64"><p className="text-[10px] font-bold uppercase mb-12 text-slate-800">Disemak oleh (Pentadbir),</p><div className="h-16 flex items-center justify-center mb-1">{selected.eSignPenyemak ? <img src={selected.eSignPenyemak} className="h-full object-contain" /> : <button onClick={()=>{ setSigningType('admin'); setIsSigning(true); }} className="bg-orange-500 text-white px-3 py-1 rounded text-[10px] font-bold print:hidden">E-SIGN PENGESAHAN</button>}</div><p className="font-black border-t-2 border-slate-800 pt-1 mt-4 uppercase text-[11px] text-slate-900">ENCIK SALIHIN BIN AHMAD</p><p className="text-[9px] font-bold text-slate-700 uppercase">Penolong Kanan Kokurikulum</p></div>
+                                </div>
+                                <div className="mt-12 pt-4 border-t-2 border-slate-800 text-center text-[10px] font-black uppercase text-slate-600 break-inside-avoid">
+                                    UNIT KOKURIKULUM SK PENDIDIKAN KHAS MIRI
                                 </div>
                             </div>
                             {isSigning && (<div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden text-slate-900"><div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl"><h3 className="font-black mb-4 uppercase text-center text-blue-600">{signingType === 'guru' ? 'Guru Pembimbing' : 'Tandatangan Pengesahan'}</h3><canvas ref={canvasRef} width="300" height="200" className="signature-pad border-2 border-dashed border-slate-300 bg-slate-50 w-full rounded-lg" /><div className="flex gap-2 mt-6"><button onClick={()=>setIsSigning(false)} className="flex-1 py-2 font-bold border rounded-lg">BATAL</button><button onClick={()=>{ const ctx=canvasRef.current.getContext('2d'); ctx.clearRect(0,0,300,200); }} className="flex-1 py-2 font-bold border rounded-lg">PADAM</button><button onClick={saveSign} className="flex-1 py-2 font-black bg-blue-600 text-white rounded-lg shadow-lg">SIMPAN</button></div></div></div>)}
@@ -347,7 +439,7 @@
                             {activities.map(c => (<button key={c} onClick={()=>setFilterClub(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClub === c ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{c}</button>))}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-slate-800">
-                            {filteredReports.map(r => (<div key={r.id} onClick={()=>setSelected(r)} className="p-5 bg-white border rounded-2xl shadow-sm hover:border-blue-500 transition group cursor-pointer border-l-8 border-l-blue-500 animate-in fade-in duration-300"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>{r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}</div><h3 className="font-black text-slate-800 group-hover:text-blue-600 transition truncate uppercase text-sm">{r.tajuk}</h3><p className="text-[10px] text-slate-400 font-bold mt-2 uppercase">{r.tarikh} • {r.namaDisediakan}</p></div>))}
+                            {filteredReports.map(r => (<div key={r.id} onClick={()=>setSelected(r)} className="p-5 bg-white border rounded-2xl shadow-sm hover:border-blue-500 transition group cursor-pointer border-l-8 border-l-blue-500 animate-in fade-in duration-300"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">P {r.perjumpaan} • {r.unit}</span>{r.eSignPenyemak ? <span className="text-[9px] text-green-500 font-bold uppercase">Disemak</span> : <span className="text-[9px] text-orange-500 font-bold uppercase animate-pulse">Menunggu</span>}</div><h3 className="font-black text-slate-800 group-hover:text-blue-600 transition truncate uppercase text-sm">{r.tajuk}</h3><p className="text-[10px] text-slate-400 font-bold mt-2 uppercase">{formatDate(r.tarikh)} • {r.namaDisediakan}</p></div>))}
                         </div>
                     </div>
                 );
@@ -362,11 +454,20 @@
                     return (
                         <div className="bg-white p-6 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in zoom-in duration-300 text-slate-900">
                             <div className="flex justify-between items-center mb-8 print:hidden text-slate-700"><button onClick={()=>setSelectedRecord(null)} className="text-blue-600 font-bold">&larr; KEMBALI</button><div className="flex gap-2 text-xs"><button onClick={() => setShowDeleteConfirmAtt(selectedRecord.id)} className="bg-red-50 text-red-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-red-200"><Icons.Trash /> PADAM</button><button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK</button></div></div>
-                            <div className="text-center mb-8"><h1 className="text-2xl font-black uppercase underline">REKOD KEHADIRAN {selectedRecord.aktiviti}</h1><p className="font-bold mt-2 uppercase text-slate-700">TARIKH: {selectedRecord.tarikh}</p></div>
+                            <div className="text-center mb-8 flex flex-col items-center border-b-2 border-slate-100 print:border-slate-800 pb-6">
+                                <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="w-24 h-24 object-contain mb-2" />
+                                <h1 className="text-xl font-black uppercase tracking-widest text-slate-900">SK PENDIDIKAN KHAS MIRI</h1>
+                                <h2 className="text-sm font-bold uppercase mt-2 bg-slate-100 print:bg-transparent print:border-none px-4 py-1 rounded-full border border-slate-300 text-slate-800">
+                                    KEHADIRAN AHLI {selectedRecord.aktiviti} • {formatDate(selectedRecord.tarikh)}
+                                </h2>
+                            </div>
                             <table className="w-full border-collapse border-2 border-slate-800 text-sm">
                                 <thead><tr className="bg-slate-100"><th className="border-2 border-slate-800 p-2 w-16">Bil</th><th className="border-2 border-slate-800 p-2 text-left">Nama Penuh Murid</th><th className="border-2 border-slate-800 p-2 w-32 text-center">Status</th></tr></thead>
                                 <tbody>{clubStudents.map((s, idx) => (<tr key={s.id}><td className="border-2 border-slate-800 p-2 text-center">{idx + 1}</td><td className="border-2 border-slate-800 p-2 font-bold uppercase">{s.name}</td><td className={`border-2 border-slate-800 p-2 text-center font-black ${selectedRecord.records[s.id] ? 'text-green-600' : 'text-red-600'}`}>{selectedRecord.records[s.id] ? 'HADIR' : 'TH'}</td></tr>))}</tbody>
                             </table>
+                            <div className="mt-12 pt-4 border-t-2 border-slate-800 text-center text-[10px] font-black uppercase text-slate-600 break-inside-avoid">
+                                UNIT KOKURIKULUM SK PENDIDIKAN KHAS MIRI
+                            </div>
                             {showDeleteConfirmAtt && (<div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[999] p-4 backdrop-blur-sm print:hidden"><div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl text-center"><h3 className="font-black text-xl mb-2 text-slate-800 uppercase tracking-widest text-slate-900">Padam Rekod?</h3><div className="flex gap-3 mt-6"><button onClick={() => setShowDeleteConfirmAtt(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-xl text-slate-800">Batal</button><button onClick={async () => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', selectedRecord.id)); showToast('Dipadam!'); setShowDeleteConfirmAtt(null); setSelectedRecord(null); } catch(e){ showToast('Ralat.'); } }} className="flex-1 py-3 font-black bg-red-600 text-white rounded-xl uppercase">Ya, Padam</button></div></div></div>)}
                         </div>
                     );
@@ -378,7 +479,7 @@
                             {activities.map(c => (<button key={c} onClick={()=>setFilterClubAtt(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition ${filterClubAtt === c ? 'bg-green-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{c}</button>))}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredAtt.map(r => (<div key={r.id} onClick={()=>setSelectedRecord(r)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-lg transition-all border-l-[10px] border-l-green-500 cursor-pointer group animate-in fade-in duration-300 text-slate-800"><div><p className="font-black text-xs uppercase text-slate-800 mb-2 group-hover:text-green-600 transition-colors uppercase">{r.aktiviti}</p><p className="text-[10px] text-slate-400 font-black uppercase">{r.tarikh}</p></div><div className="text-slate-200 group-hover:text-green-500 transition-colors"><Icons.ClipboardList /></div></div>))}
+                            {filteredAtt.map(r => (<div key={r.id} onClick={()=>setSelectedRecord(r)} className="p-5 bg-white border-2 border-slate-100 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-lg transition-all border-l-[10px] border-l-green-500 cursor-pointer group animate-in fade-in duration-300 text-slate-800"><div><p className="font-black text-xs uppercase text-slate-800 mb-2 group-hover:text-green-600 transition-colors uppercase">{r.aktiviti}</p><p className="text-[10px] text-slate-400 font-black uppercase">{formatDate(r.tarikh)}</p></div><div className="text-slate-200 group-hover:text-green-500 transition-colors"><Icons.ClipboardList /></div></div>))}
                         </div>
                     </div>
                 );
@@ -408,192 +509,508 @@
             const RumusanView = () => {
                 const [subTab, setSubTab] = useState('kehadiran');
                 const [sel, setSel] = useState(activities[0] || '');
+                const [searchQuery, setSearchQuery] = useState('');
 
-                // 1. Logic for Attendance Analysis (Kehadiran)
+                // 1. STATS KEHADIRAN MENGIKUT AHLI KELAB YANG DIPILIH
                 const stats = useMemo(() => {
                     const list = students.filter(s => s.act1 === sel.toUpperCase() || s.act2 === sel.toUpperCase() || s.act3 === sel.toUpperCase());
                     const records = attendanceRecords.filter(r => r.aktiviti === sel);
                     return list.map(s => { 
                         let present = 0; 
-                        records.forEach(r => { if (r.records[s.id]) present++; }); 
+                        records.forEach(r => { if (r.records && r.records[s.id]) present++; }); 
                         return { ...s, present, total: records.length }; 
                     });
                 }, [students, attendanceRecords, sel]);
 
-                // 2. Logic for Report Analysis (Laporan)
+                const totalClubPresent = useMemo(() => stats.reduce((sum, s) => sum + s.present, 0), [stats]);
+                const totalClubPossible = useMemo(() => stats.reduce((sum, s) => sum + s.total, 0), [stats]);
+                const overallClubPercentage = useMemo(() => totalClubPossible > 0 ? Math.round((totalClubPresent / totalClubPossible) * 100) : 0, [totalClubPresent, totalClubPossible]);
+
+                // 2. RUMUSAN INDIVIDU MURID BAGI KETIGA-TIGA UNIT
+                const studentSummary = useMemo(() => {
+                    return students.map(s => {
+                        const calculateAttendanceForUnit = (unitName) => {
+                            if (!unitName || unitName === '-' || unitName.trim() === '') return null;
+                            const normalizedUnit = unitName.trim().toUpperCase();
+                            const records = attendanceRecords.filter(r => r.aktiviti?.trim().toUpperCase() === normalizedUnit);
+                            if (records.length === 0) return { pct: '-', present: 0, total: 0 };
+                            
+                            let present = 0;
+                            records.forEach(r => {
+                                if (r.records && r.records[s.id] === true) present++;
+                            });
+                            return {
+                                pct: `${Math.round((present / records.length) * 100)}%`,
+                                present,
+                                total: records.length
+                            };
+                        };
+
+                        return {
+                            id: s.id,
+                            name: s.name,
+                            unit1: s.act1,
+                            att1: calculateAttendanceForUnit(s.act1),
+                            unit2: s.act2,
+                            att2: calculateAttendanceForUnit(s.act2),
+                            unit3: s.act3,
+                            att3: calculateAttendanceForUnit(s.act3)
+                        };
+                    });
+                }, [students, attendanceRecords]);
+
+                const filteredStudentSummary = useMemo(() => {
+                    if (!searchQuery) return studentSummary;
+                    const normalizedQuery = searchQuery.trim().toUpperCase();
+                    return studentSummary.filter(s => s.name?.toUpperCase().includes(normalizedQuery));
+                }, [studentSummary, searchQuery]);
+
+                // 3. STATS KESELURUHAN KEHADIRAN BAGI SETIAP KELAB
+                const clubOverallStats = useMemo(() => {
+                    return activities.filter(act => act !== 'MENGAMBIL DATA...').map(club => {
+                        const enrolled = students.filter(s => s.act1 === club.toUpperCase() || s.act2 === club.toUpperCase() || s.act3 === club.toUpperCase());
+                        const records = attendanceRecords.filter(r => r.aktiviti?.trim().toUpperCase() === club.trim().toUpperCase());
+                        
+                        let totalPossible = enrolled.length * records.length;
+                        let totalPresent = 0;
+                        
+                        records.forEach(r => {
+                            enrolled.forEach(s => {
+                                if (r.records && r.records[s.id] === true) {
+                                    totalPresent++;
+                                }
+                            });
+                        });
+                        
+                        const percentage = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 0;
+                        
+                        return {
+                            club,
+                            memberCount: enrolled.length,
+                            sessionCount: records.length,
+                            totalPossible,
+                            totalPresent,
+                            percentage
+                        };
+                    });
+                }, [activities, students, attendanceRecords]);
+
+                // 4. RUMUSAN PERATUS KESELURUHAN KOKURIKULUM 2026
+                const overallCoCuPercentage = useMemo(() => {
+                    const clubsWithSessions = clubOverallStats.filter(c => c.sessionCount > 0);
+                    if (clubsWithSessions.length === 0) return 0;
+                    const sum = clubsWithSessions.reduce((acc, c) => acc + c.percentage, 0);
+                    return Math.round(sum / clubsWithSessions.length);
+                }, [clubOverallStats]);
+
+                // 5. ANALISIS LAPORAN MINGGUAN
                 const reportStats = useMemo(() => {
                     return activities.filter(act => act !== 'MENGAMBIL DATA...').map(club => {
                         const clubReports = reports.filter(r => r.unit === club);
                         const disemak = clubReports.filter(r => r.eSignPenyemak).length;
-                        const belumDisemak = clubReports.length - disemak;
                         return {
                             club,
                             total: clubReports.length,
                             disemak,
-                            belumDisemak
+                            belumDisemak: clubReports.length - disemak
                         };
                     }).sort((a, b) => b.total - a.total);
                 }, [activities, reports]);
 
+                // 6. FUNGSI CETAKAN & PDF MESRA A4 (1 MUKA SURAT)
+                const handlePrint = () => {
+                    const el = document.getElementById('analysis-print-area');
+                    el.classList.add('single-page-print');
+                    window.print();
+                    el.classList.remove('single-page-print');
+                };
+
+                const handleDownloadPDF = () => {
+                    const el = document.getElementById('analysis-print-area');
+                    el.classList.add('single-page-print');
+                    
+                    const opt = { 
+                        margin: 8, 
+                        filename: `Analisis_${subTab.toUpperCase()}_SKPKMIRI.pdf`, 
+                        image: { type: 'jpeg', quality: 0.98 }, 
+                        html2canvas: { scale: 2, useCORS: true }, 
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } 
+                    };
+                    
+                    html2pdf().from(el).set(opt).save().then(() => {
+                        el.classList.remove('single-page-print');
+                    });
+                };
+
                 return (
                     <div className="space-y-6 animate-in slide-in-from-right duration-500 text-slate-800">
-                        {/* Navigation Sub-Tabs */}
-                        <div className="bg-white p-2 rounded-2xl border shadow-sm flex flex-wrap gap-2 print:hidden">
+                        {/* Sub-tab Navigation */}
+                        <div className="bg-white p-2 rounded-2xl border shadow-sm grid grid-cols-2 lg:grid-cols-4 gap-2 print:hidden">
                             <button 
                                 type="button"
                                 onClick={() => setSubTab('kehadiran')} 
-                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'kehadiran' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                                className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'kehadiran' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
                             >
                                 <Icons.Users /> Analisis Kehadiran
                             </button>
                             <button 
                                 type="button"
+                                onClick={() => setSubTab('rumusan_murid')} 
+                                className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'rumusan_murid' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                <Icons.ClipboardList /> Rumusan Murid
+                            </button>
+                            <button 
+                                type="button"
                                 onClick={() => setSubTab('keseluruhan')} 
-                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'keseluruhan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                                className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'keseluruhan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
                             >
                                 <Icons.PieChart /> Analisis Keseluruhan
                             </button>
                             <button 
                                 type="button"
                                 onClick={() => setSubTab('laporan')} 
-                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'laporan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                                className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'laporan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
                             >
-                                <Icons.ClipboardList /> Analisis Laporan
+                                <Icons.Archive /> Analisis Laporan
                             </button>
                         </div>
 
-                        {/* Content Display based on Sub-Tab */}
-                        {subTab === 'kehadiran' && (
-                            <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                    <div>
-                                        <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2">
-                                            <Icons.Users /> Analisis Kehadiran Murid
-                                        </h2>
-                                        <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Rekod Kehadiran Mengikut Unit Kokurikulum</p>
-                                    </div>
-                                    <select 
-                                        className="p-3 border rounded-xl text-xs font-bold bg-slate-50 text-slate-700 w-full sm:w-auto uppercase outline-none focus:border-blue-500 transition" 
-                                        value={sel} 
-                                        onChange={e => setSel(e.target.value)}
-                                    >
-                                        {activities.map(a => <option key={a} value={a}>{a}</option>)}
-                                    </select>
-                                </div>
-                                
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
-                                        <thead className="bg-slate-100">
-                                            <tr>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32">Hadir / Sesi</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-24">% Kehadiran</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {stats.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan="4" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada data kehadiran bagi unit ini...</td>
-                                                </tr>
-                                            ) : (
-                                                stats.map((s, i) => { 
-                                                    const perc = s.total > 0 ? Math.round((s.present / s.total) * 100) : 0; 
-                                                    return (
-                                                        <tr key={i} className="hover:bg-slate-50 transition">
-                                                            <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-400">{i + 1}</td>
-                                                            <td className="p-3 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td>
-                                                            <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td>
-                                                            <td className="p-3 border-2 border-slate-800 text-center font-black">
-                                                                <span className={`px-2 py-1 rounded text-xs font-black ${perc >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                                    {perc}%
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ); 
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
+                        {/* Action Buttons for PDF/Print */}
+                        <div className="flex justify-end gap-2 print:hidden">
+                            <button 
+                                onClick={handleDownloadPDF} 
+                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition"
+                            >
+                                <Icons.Download /> Simpan PDF
+                            </button>
+                            <button 
+                                onClick={handlePrint} 
+                                className="bg-slate-800 hover:bg-slate-950 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition"
+                            >
+                                <Icons.Printer /> Cetak
+                            </button>
+                        </div>
+
+                        {/* Printable Area */}
+                        <div id="analysis-print-area" className="bg-white p-6 rounded-2xl border shadow-sm">
+                            {/* Header Rasmi untuk Cetakan */}
+                            <div className="hidden print:flex flex-col items-center border-b-2 border-slate-800 pb-6 mb-6">
+                                <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="w-24 h-24 object-contain mb-2" />
+                                <h1 className="text-xl font-black uppercase tracking-widest text-slate-900">SK PENDIDIKAN KHAS MIRI</h1>
+                                <h2 className="text-sm font-bold uppercase mt-2 text-slate-800">
+                                    ANALISIS {
+                                        subTab === 'kehadiran' ? 'KEHADIRAN MURID' :
+                                        subTab === 'rumusan_murid' ? 'RUMUSAN MURID' :
+                                        subTab === 'keseluruhan' ? 'KESELURUHAN' : 'LAPORAN MINGGUAN'
+                                    }
+                                </h2>
+                                <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Tarikh Cetakan: {formatDate(new Date().toISOString().split('T')[0])}</p>
                             </div>
-                        )}
 
-                        {subTab === 'keseluruhan' && (
-                            <div className="bg-white p-8 rounded-2xl border shadow-sm text-center py-16 space-y-4">
-                                <div className="text-6xl animate-bounce">📊</div>
-                                <h2 className="text-2xl font-black uppercase text-slate-800">Analisis Keseluruhan</h2>
-                                <p className="text-slate-400 max-w-md mx-auto uppercase text-xs font-bold leading-relaxed">
-                                    Ruangan ini telah disediakan untuk kegunaan anda kelak. Sila nyatakan format atau formula statistik yang anda perlukan, dan kami sedia membina reka bentuk premium untuk anda!
-                                </p>
-                                <div className="pt-4 max-w-md mx-auto grid grid-cols-3 gap-2">
-                                    <div className="bg-slate-50 p-4 rounded-xl border">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Murid</p>
-                                        <p className="text-xl font-black text-slate-800 mt-1">{students.length}</p>
+                            {/* SUBTAB 1: ANALISIS KEHADIRAN GURU / KELAB */}
+                            {subTab === 'kehadiran' && (
+                                <div className="space-y-4">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:mb-2">
+                                        <div>
+                                            <h2 className="text-lg font-black uppercase text-blue-600 flex items-center gap-2">
+                                                <Icons.Users /> Analisis Kehadiran Murid
+                                            </h2>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">Rekod Kehadiran Mengikut Unit Kokurikulum</p>
+                                        </div>
+                                        <select 
+                                            className="p-2 border rounded-xl text-xs font-bold bg-slate-50 text-slate-700 w-full sm:w-auto uppercase outline-none focus:border-blue-500 transition print:hidden" 
+                                            value={sel} 
+                                            onChange={e => setSel(e.target.value)}
+                                        >
+                                            {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                                        </select>
+                                        <span className="hidden print:inline-block font-black text-xs text-slate-800 uppercase bg-slate-100 px-3 py-1 rounded">
+                                            UNIT: {sel}
+                                        </span>
                                     </div>
-                                    <div className="bg-slate-50 p-4 rounded-xl border">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Guru</p>
-                                        <p className="text-xl font-black text-slate-800 mt-1">{teachers.length}</p>
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-xl border">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Kelab / Unit</p>
-                                        <p className="text-xl font-black text-slate-800 mt-1">{activities.filter(a => a !== 'MENGAMBIL DATA...').length}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {subTab === 'laporan' && (
-                            <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
-                                <div>
-                                    <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2">
-                                        <Icons.ClipboardList /> Analisis Laporan Mingguan
-                                    </h2>
-                                    <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Jumlah Rekod Laporan Yang Dihantar Mengikut Setiap Kelab/Unit</p>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
-                                        <thead className="bg-slate-100">
-                                            <tr>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black">Unit / Kelab Co-Kurikulum</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-36">Belum Disemak</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32">Telah Disemak</th>
-                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32 bg-blue-50/50">Jumlah Laporan</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {reportStats.length === 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                            <thead className="bg-slate-100">
                                                 <tr>
-                                                    <td colSpan="5" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada rekod laporan ditemui...</td>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-32">Hadir / Sesi</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-24">% Kehadiran</th>
                                                 </tr>
-                                            ) : (
-                                                reportStats.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50 transition">
-                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-400">{idx + 1}</td>
-                                                        <td className="p-3 border-2 border-slate-800 font-black uppercase text-slate-700">{item.club}</td>
-                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold">
-                                                            <span className={`px-2 py-1 rounded text-xs font-black ${item.belumDisemak > 0 ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>
-                                                                {item.belumDisemak}
+                                            </thead>
+                                            <tbody>
+                                                {stats.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="4" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada data kehadiran bagi unit ini...</td>
+                                                    </tr>
+                                                ) : (
+                                                    stats.map((s, i) => { 
+                                                        const perc = s.total > 0 ? Math.round((s.present / s.total) * 100) : 0; 
+                                                        return (
+                                                            <tr key={i} className="hover:bg-slate-50 transition">
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-400">{i + 1}</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-black">
+                                                                    <span className={`px-2 py-0.5 rounded text-xs font-black ${perc >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {perc}%
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ); 
+                                                    })
+                                                )}
+                                                
+                                                {stats.length > 0 && (
+                                                    <tr className="bg-blue-50/50 font-black">
+                                                        <td colSpan="2" className="p-2.5 border-2 border-slate-800 text-right uppercase text-blue-900 font-black text-xs">JUMLAH PERATUS KEHADIRAN KELAB:</td>
+                                                        <td className="p-2.5 border-2 border-slate-800 text-center text-blue-900 font-bold">{totalClubPresent} / {totalClubPossible}</td>
+                                                        <td className="p-2.5 border-2 border-slate-800 text-center font-black">
+                                                            <span className={`px-2.5 py-0.5 rounded text-xs font-black ${overallClubPercentage >= 80 ? 'bg-green-600 text-white shadow-sm' : 'bg-red-600 text-white shadow-sm'}`}>
+                                                                {overallClubPercentage}%
                                                             </span>
-                                                        </td>
-                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold">
-                                                            <span className={`px-2 py-1 rounded text-xs font-black ${item.disemak > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                                                                {item.disemak}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-3 border-2 border-slate-800 text-center font-black bg-blue-50/20 text-blue-700 text-sm">
-                                                            {item.total}
                                                         </td>
                                                     </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
+                            )}
+
+                            {/* SUBTAB 2: PERATUS RUMUSAN GURU / MURID */}
+                            {subTab === 'rumusan_murid' && (
+                                <div className="space-y-4">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:mb-2">
+                                        <div>
+                                            <h2 className="text-lg font-black uppercase text-blue-600 flex items-center gap-2">
+                                                <Icons.ClipboardList /> Rumusan Peratus Kehadiran Murid
+                                            </h2>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">Analisis Peratusan Merangkumi Semua Unit Kokurikulum Berdaftar</p>
+                                        </div>
+                                        <div className="w-full sm:w-64 print:hidden">
+                                            <input 
+                                                type="text" 
+                                                className="w-full p-2 border rounded-xl text-xs font-bold bg-slate-50 text-slate-700 uppercase outline-none focus:bg-white focus:border-blue-500 transition" 
+                                                placeholder="🔍 Carian Nama Murid..." 
+                                                value={searchQuery}
+                                                onChange={e => setSearchQuery(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                            <thead className="bg-slate-100">
+                                                <tr>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black w-1/3">Nama Penuh Murid</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center">Unit 1 (Kelab)</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center">Unit 2 (Persatuan)</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center">Unit 3 (Sukan)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredStudentSummary.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="5" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada padanan nama murid ditemui...</td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredStudentSummary.map((s, idx) => (
+                                                        <tr key={s.id} className="hover:bg-slate-50 transition">
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-400">{idx + 1}</td>
+                                                            <td className="p-2.5 border-2 border-slate-800 font-black uppercase text-slate-700">{s.name}</td>
+                                                            
+                                                            {/* Unit 1 */}
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold">
+                                                                {s.att1 ? (
+                                                                    <div className="space-y-0.5">
+                                                                        <div className="text-[8px] uppercase text-slate-400 truncate max-w-[120px] mx-auto" title={s.unit1}>{s.unit1}</div>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${parseInt(s.att1.pct) >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {s.att1.pct}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-300">-</span>
+                                                                )}
+                                                            </td>
+
+                                                            {/* Unit 2 */}
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold">
+                                                                {s.att2 ? (
+                                                                    <div className="space-y-0.5">
+                                                                        <div className="text-[8px] uppercase text-slate-400 truncate max-w-[120px] mx-auto" title={s.unit2}>{s.unit2}</div>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${parseInt(s.att2.pct) >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {s.att2.pct}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-300">-</span>
+                                                                )}
+                                                            </td>
+
+                                                            {/* Unit 3 */}
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold">
+                                                                {s.att3 ? (
+                                                                    <div className="space-y-0.5">
+                                                                        <div className="text-[8px] uppercase text-slate-400 truncate max-w-[120px] mx-auto" title={s.unit3}>{s.unit3}</div>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${parseInt(s.att3.pct) >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {s.att3.pct}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-300">-</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SUBTAB 3: ANALISIS KESELURUHAN */}
+                            {subTab === 'keseluruhan' && (
+                                <div className="space-y-4">
+                                    {/* Dashboard Card Utama */}
+                                    <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-center justify-between gap-4 border border-blue-600 print:bg-none print:from-white print:to-white print:text-slate-800 print:border-2 print:border-slate-800">
+                                        <div className="space-y-1 text-center md:text-left">
+                                            <span className="text-[9px] bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded-full font-black tracking-widest uppercase border border-blue-400/20 print:border-slate-800 print:text-slate-800">PRESTASI SEKOLAH 2026</span>
+                                            <h2 className="text-lg md:text-xl font-black uppercase tracking-tight print:text-slate-900">RUMUSAN PERATUS KEHADIRAN KOKURIKULUM 2026</h2>
+                                            <p className="text-[10px] text-blue-200 max-w-lg leading-relaxed uppercase print:text-slate-600">
+                                                Purata Peratusan terkumpul kehadiran murid bagi keseluruhan kelab, persatuan, dan sukan berdaftar sepanjang sesi persekolahan 2026.
+                                            </p>
+                                        </div>
+                                        <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 text-center min-w-[130px] flex flex-col items-center justify-center print:bg-slate-100 print:border-slate-800">
+                                            <p className="text-[8px] font-black uppercase text-blue-200 tracking-wider print:text-slate-700">Kadar Kehadiran</p>
+                                            <span className="text-4xl font-black my-0.5 block text-white print:text-slate-900">{overallCoCuPercentage}%</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Jadual Kehadiran Setiap Kelab */}
+                                    <div className="space-y-2">
+                                        <div>
+                                            <h3 className="text-md font-black uppercase text-blue-600 flex items-center gap-2">
+                                                <Icons.PieChart /> Peratus Kehadiran Mengikut Kelab / Unit
+                                            </h3>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">Pengiraan Komprehensif Berdasarkan Bilangan Ahli Berdaftar Dan Jumlah Sesi Kehadiran</p>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                                <thead className="bg-slate-100">
+                                                    <tr>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black">Unit / Kelab</th>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-28">Ahli Berdaftar</th>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-28">Sesi Direkod</th>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-36">Jumlah Kehadiran Murid</th>
+                                                        <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-32">Kadar Kehadiran</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {clubOverallStats.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan="6" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada rekod data kelab ditemui...</td>
+                                                        </tr>
+                                                    ) : (
+                                                        clubOverallStats.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50 transition">
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-400">{idx + 1}</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 font-black uppercase text-slate-700">{item.club}</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-600">{item.memberCount} Murid</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-600">{item.sessionCount} Sesi</td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-500">
+                                                                    {item.sessionCount > 0 ? (
+                                                                        <span>{item.totalPresent} / {item.totalPossible} slot</span>
+                                                                    ) : (
+                                                                        <span className="text-slate-300">-</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="p-2.5 border-2 border-slate-800 text-center font-black">
+                                                                    {item.sessionCount > 0 ? (
+                                                                        <span className={`px-2 py-0.5 rounded font-black text-xs ${item.percentage >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                            {item.percentage}%
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded">TIADA SESI</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SUBTAB 4: ANALISIS LAPORAN */}
+                            {subTab === 'laporan' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <h2 className="text-lg font-black uppercase text-blue-600 flex items-center gap-2">
+                                            <Icons.ClipboardList /> Analisis Laporan Mingguan
+                                        </h2>
+                                        <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase">Jumlah Rekod Laporan Yang Dihantar Mengikut Setiap Kelab/Unit</p>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                            <thead className="bg-slate-100">
+                                                <tr>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black">Unit / Kelab Co-Kurikulum</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-36">Belum Disemak</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-32">Telah Disemak</th>
+                                                    <th className="p-2.5 border-2 border-slate-800 uppercase font-black text-center w-32 bg-blue-50/50">Jumlah Laporan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {reportStats.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="5" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada rekod laporan ditemui...</td>
+                                                    </tr>
+                                                ) : (
+                                                    reportStats.map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-50 transition">
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold text-slate-400">{idx + 1}</td>
+                                                            <td className="p-2.5 border-2 border-slate-800 font-black uppercase text-slate-700">{item.club}</td>
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold">
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-black ${item.belumDisemak > 0 ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>
+                                                                    {item.belumDisemak}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-bold">
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-black ${item.disemak > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                                                                    {item.disemak}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 border-2 border-slate-800 text-center font-black bg-blue-50/20 text-blue-700 text-sm">
+                                                                {item.total}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Ruangan Pengesahan Kosong Semasa Cetakan */}
+                            <div className="hidden print:flex justify-between mt-12 px-12 text-center text-[10px] font-black break-inside-avoid">
+                                <div className="w-56 border-t border-slate-800 pt-2 uppercase">Disediakan Oleh:<br/><span className="text-slate-400">(Setiausaha Kokurikulum)</span></div>
+                                <div className="w-56 border-t border-slate-800 pt-2 uppercase">Disahkan Oleh:<br/><span className="text-slate-400">(Penolong Kanan Kokurikulum)</span></div>
                             </div>
-                        )}
+                            
+                            <div className="hidden print:block mt-12 pt-4 border-t-2 border-slate-800 text-center text-[10px] font-black uppercase text-slate-600 break-inside-avoid">
+                                UNIT KOKURIKULUM SK PENDIDIKAN KHAS MIRI
+                            </div>
+                        </div>
                     </div>
                 );
             };
