@@ -205,6 +205,7 @@
                         setEditingReport(null); setCurrentView('rekod_laporan');
                     } catch (err) { showToast('Ralat simpan.'); }
                 };
+                
                 const ImageBox = ({ label, field }) => (
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-slate-500 uppercase">{label}</label>
@@ -285,6 +286,7 @@
                     const el = document.getElementById('pdf-content'); const opt = { margin: 10, filename: `Laporan_${selected.unit}_${selected.tarikh}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
                     html2pdf().from(el).set(opt).save();
                 };
+                
                 useEffect(() => {
                     if (!isSigning || !canvasRef.current) return;
                     const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; let d = false;
@@ -404,19 +406,194 @@
             };
 
             const RumusanView = () => {
+                const [subTab, setSubTab] = useState('kehadiran');
                 const [sel, setSel] = useState(activities[0] || '');
+
+                // 1. Logic for Attendance Analysis (Kehadiran)
                 const stats = useMemo(() => {
                     const list = students.filter(s => s.act1 === sel.toUpperCase() || s.act2 === sel.toUpperCase() || s.act3 === sel.toUpperCase());
                     const records = attendanceRecords.filter(r => r.aktiviti === sel);
-                    return list.map(s => { let present = 0; records.forEach(r => { if (r.records[s.id]) present++; }); return { ...s, present, total: records.length }; });
+                    return list.map(s => { 
+                        let present = 0; 
+                        records.forEach(r => { if (r.records[s.id]) present++; }); 
+                        return { ...s, present, total: records.length }; 
+                    });
                 }, [students, attendanceRecords, sel]);
+
+                // 2. Logic for Report Analysis (Laporan)
+                const reportStats = useMemo(() => {
+                    return activities.filter(act => act !== 'MENGAMBIL DATA...').map(club => {
+                        const clubReports = reports.filter(r => r.unit === club);
+                        const disemak = clubReports.filter(r => r.eSignPenyemak).length;
+                        const belumDisemak = clubReports.length - disemak;
+                        return {
+                            club,
+                            total: clubReports.length,
+                            disemak,
+                            belumDisemak
+                        };
+                    }).sort((a, b) => b.total - a.total);
+                }, [activities, reports]);
+
                 return (
-                    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6 animate-in slide-in-from-right duration-500 text-slate-800">
-                        <div className="flex justify-between items-center"><h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2"><Icons.PieChart /> Analisis Kehadiran</h2><select className="p-2 border rounded-lg text-xs font-bold bg-slate-50 text-slate-700" value={sel} onChange={e=>setSel(e.target.value)}>{activities.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
-                        <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
-                            <thead className="bg-slate-100"><tr><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Bil</th><th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">Hadir / Sesi</th><th className="p-2 border-2 border-slate-800 uppercase font-black text-center">%</th></tr></thead>
-                            <tbody>{stats.map((s, i) => { const perc = s.total > 0 ? Math.round((s.present/s.total)*100) : 0; return (<tr key={i}><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-400">{i+1}</td><td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td><td className="p-2 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td><td className="p-2 border-2 border-slate-800 text-center font-black"><span className={`px-2 py-0.5 rounded font-black ${perc >= 80 ? 'text-green-600' : 'text-red-600'}`}>{perc}%</span></td></tr>); })}</tbody>
-                        </table>
+                    <div className="space-y-6 animate-in slide-in-from-right duration-500 text-slate-800">
+                        {/* Navigation Sub-Tabs */}
+                        <div className="bg-white p-2 rounded-2xl border shadow-sm flex flex-wrap gap-2 print:hidden">
+                            <button 
+                                type="button"
+                                onClick={() => setSubTab('kehadiran')} 
+                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'kehadiran' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                <Icons.Users /> Analisis Kehadiran
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setSubTab('keseluruhan')} 
+                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'keseluruhan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                <Icons.PieChart /> Analisis Keseluruhan
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setSubTab('laporan')} 
+                                className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all duration-200 flex items-center justify-center gap-2 ${subTab === 'laporan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                <Icons.ClipboardList /> Analisis Laporan
+                            </button>
+                        </div>
+
+                        {/* Content Display based on Sub-Tab */}
+                        {subTab === 'kehadiran' && (
+                            <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div>
+                                        <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2">
+                                            <Icons.Users /> Analisis Kehadiran Murid
+                                        </h2>
+                                        <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Rekod Kehadiran Mengikut Unit Kokurikulum</p>
+                                    </div>
+                                    <select 
+                                        className="p-3 border rounded-xl text-xs font-bold bg-slate-50 text-slate-700 w-full sm:w-auto uppercase outline-none focus:border-blue-500 transition" 
+                                        value={sel} 
+                                        onChange={e => setSel(e.target.value)}
+                                    >
+                                        {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                                    </select>
+                                </div>
+                                
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                        <thead className="bg-slate-100">
+                                            <tr>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32">Hadir / Sesi</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-24">% Kehadiran</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {stats.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="4" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada data kehadiran bagi unit ini...</td>
+                                                </tr>
+                                            ) : (
+                                                stats.map((s, i) => { 
+                                                    const perc = s.total > 0 ? Math.round((s.present / s.total) * 100) : 0; 
+                                                    return (
+                                                        <tr key={i} className="hover:bg-slate-50 transition">
+                                                            <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-400">{i + 1}</td>
+                                                            <td className="p-3 border-2 border-slate-800 font-bold uppercase text-slate-700">{s.name}</td>
+                                                            <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-500">{s.present} / {s.total}</td>
+                                                            <td className="p-3 border-2 border-slate-800 text-center font-black">
+                                                                <span className={`px-2 py-1 rounded text-xs font-black ${perc >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                    {perc}%
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ); 
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {subTab === 'keseluruhan' && (
+                            <div className="bg-white p-8 rounded-2xl border shadow-sm text-center py-16 space-y-4">
+                                <div className="text-6xl animate-bounce">📊</div>
+                                <h2 className="text-2xl font-black uppercase text-slate-800">Analisis Keseluruhan</h2>
+                                <p className="text-slate-400 max-w-md mx-auto uppercase text-xs font-bold leading-relaxed">
+                                    Ruangan ini telah disediakan untuk kegunaan anda kelak. Sila nyatakan format atau formula statistik yang anda perlukan, dan kami sedia membina reka bentuk premium untuk anda!
+                                </p>
+                                <div className="pt-4 max-w-md mx-auto grid grid-cols-3 gap-2">
+                                    <div className="bg-slate-50 p-4 rounded-xl border">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Murid</p>
+                                        <p className="text-xl font-black text-slate-800 mt-1">{students.length}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-xl border">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Guru</p>
+                                        <p className="text-xl font-black text-slate-800 mt-1">{teachers.length}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-xl border">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Kelab / Unit</p>
+                                        <p className="text-xl font-black text-slate-800 mt-1">{activities.filter(a => a !== 'MENGAMBIL DATA...').length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {subTab === 'laporan' && (
+                            <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-6">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase text-blue-600 flex items-center gap-2">
+                                        <Icons.ClipboardList /> Analisis Laporan Mingguan
+                                    </h2>
+                                    <p className="text-xs text-slate-400 font-bold mt-1 uppercase">Jumlah Rekod Laporan Yang Dihantar Mengikut Setiap Kelab/Unit</p>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs text-left border-collapse border-2 border-slate-800">
+                                        <thead className="bg-slate-100">
+                                            <tr>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black">Unit / Kelab Co-Kurikulum</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-36">Belum Disemak</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32">Telah Disemak</th>
+                                                <th className="p-3 border-2 border-slate-800 uppercase font-black text-center w-32 bg-blue-50/50">Jumlah Laporan</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportStats.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="5" className="p-8 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada rekod laporan ditemui...</td>
+                                                </tr>
+                                            ) : (
+                                                reportStats.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50 transition">
+                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold text-slate-400">{idx + 1}</td>
+                                                        <td className="p-3 border-2 border-slate-800 font-black uppercase text-slate-700">{item.club}</td>
+                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold">
+                                                            <span className={`px-2 py-1 rounded text-xs font-black ${item.belumDisemak > 0 ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>
+                                                                {item.belumDisemak}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-3 border-2 border-slate-800 text-center font-bold">
+                                                            <span className={`px-2 py-1 rounded text-xs font-black ${item.disemak > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                                                                {item.disemak}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-3 border-2 border-slate-800 text-center font-black bg-blue-50/20 text-blue-700 text-sm">
+                                                            {item.total}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             };
