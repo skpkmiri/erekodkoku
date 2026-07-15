@@ -3,324 +3,437 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>eKoku</title>
-    
-    <!-- Tailwind CSS -->
+    <title>eKOKU LIVE - SKPK MIRI</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    
-    <!-- Babel & html2pdf -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-    <!-- SheetJS untuk fungsi Eksport Excel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        
-        /* CSS KHUSUS UNTUK CETAKAN A4 & PDF */
         @media print { 
             .print\:hidden { display: none !important; } 
-            body { background: white !important; padding: 0 !important; margin: 0 !important; width: 210mm !important; } 
+            body { background: white !important; padding: 0 !important; margin: 0 !important; } 
             @page { size: A4 portrait; margin: 10mm; }
-            .break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; }
+            .break-inside-avoid { page-break-inside: avoid; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            
-            .single-page-print {
-                width: 190mm !important; /* 210mm lebar A4 - 20mm margin kiri kanan */
-                max-height: 277mm !important; /* 297mm tinggi A4 - 20mm margin atas bawah */
-                overflow: hidden !important;
-                box-sizing: border-box !important;
-                padding: 0 !important;
-                margin: auto !important;
-            }
-            .single-page-print table {
-                font-size: 10px !important;
-                line-height: 1.2 !important;
-            }
-            .single-page-print th, .single-page-print td {
-                padding: 4px !important;
-            }
         }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+        .signature-pad { touch-action: none; cursor: crosshair; }
+        #pdf-content { background: white; }
     </style>
-
-    <script>
-        window.Babel.registerPreset("react-classic", {
-            presets: [[window.Babel.availablePresets["react"], { runtime: "classic" }]]
-        });
-    </script>
 </head>
-<body class="text-slate-800 antialiased">
-    <div id="root"></div>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="root">
+        <div class="h-screen flex items-center justify-center bg-slate-900 text-white font-bold text-center p-4">
+            <div>
+                <div class="text-4xl mb-4 animate-bounce">🚀</div>
+                <p class="tracking-widest uppercase text-xs font-black">Menyambung ke Cloud Firebase...</p>
+                <p class="text-[10px] opacity-40 mt-2">SILA TUNGGU SEBENTAR</p>
+            </div>
+        </div>
+    </div>
 
-    <script type="text/babel" data-presets="env,react-classic">
-        const { useState, useEffect, useMemo } = React;
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
+        import { getFirestore, initializeFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, orderBy, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 
-        // --- ICONS COMPONENT ---
-        const Icons = {
-            School: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14v7"/></svg>,
-            Check: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>,
-            FileText: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>,
-            Users: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
-            Chart: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
-            Download: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>,
-            Printer: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>,
-            Excel: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // --- KONFIGURASI FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDXh_xTy18MAeWNex2pAbxIU1GmPKFo2pg",
+            authDomain: "ekoku-skpk-miri.firebaseapp.com",
+            projectId: "ekoku-skpk-miri",
+            storageBucket: "ekoku-skpk-miri.firebasestorage.app",
+            messagingSenderId: "207059132138",
+            appId: "1:207059132138:web:a36f8d2ce00d91806bc193",
+            measurementId: "G-4FYQE25KRK"
         };
 
-        // --- DATA MOCKUP (Sebagai Ganti Firebase untuk Preview Mandiri) ---
-        const initialStudents = [
-            { id: 'S1', name: 'CASSANDRA MARIA JEGA ANAK SEMALIE', act1: 'KELAB ICT', act2: 'BOLA JARING', act3: 'PENGAKAP' },
-            { id: 'S2', name: 'DIONYSIUS DELROY ANAK RAYMOND', act1: 'KELAB ICT', act2: 'BOLA SEPAK', act3: 'TKRS' },
-            { id: 'S3', name: 'IZZ DASUKI BIN ABDULLAH', act1: 'KELAB ICT', act2: 'BOLA SEPAK', act3: 'TKRS' },
-            { id: 'S4', name: 'JOSELINE JONG SHI YING', act1: 'KELAB ICT', act2: 'BOLA JARING', act3: 'PENGAKAP' },
-            { id: 'S5', name: 'MCLAIRE NYARINE ANAK STEPHEN', act1: 'KELAB ICT', act2: 'BOLA JARING', act3: 'PENGAKAP' },
-            { id: 'S6', name: 'NUR AINA BINTI BAHARIM', act1: 'KELAB ICT', act2: 'BOLA JARING', act3: 'PENGAKAP' },
-            { id: 'S7', name: 'SURAIYA KHAIRINA BINTI KHAIRUL', act1: 'KELAB ICT', act2: 'BOLA JARING', act3: 'PENGAKAP' },
-            { id: 'S8', name: 'ZAIM ZAHRAN BIN ZAINUDDIN', act1: 'KELAB ICT', act2: 'BOLA SEPAK', act3: 'TKRS' }
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        // Menggunakan experimentalForceLongPolling demi kestabilan talian internet sekolah
+        const db = initializeFirestore(app, { experimentalForceLongPolling: true });
+        const appId = 'ekoku-skpk-miri';
+
+        // --- ICONS ---
+        const Icons = {
+            PenTool: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>,
+            Users: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>,
+            ClipboardList: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>,
+            Archive: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect></svg>,
+            PieChart: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>,
+            Printer: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>,
+            Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 .33-1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+            Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
+            Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+            Download: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        };
+
+        // --- SENARAI PILIHAN PIKeBM ---
+        const PIKEBM_OPTS = [
+            '', 'Akhbar Pembuka Minda', 'Akulah Jaguh', 'Bina Kata', 'Bisik-bisik Sayang', 'Burung Tiung', 'Cakna Mata', 'Cef Cilik', 'Cuit-cuit Fikir', 
+            'DJ Hatiku', 'Fikir-fikirkan', 'Getaran Bahasa', 'Hai Haiku', 'Jika Maka', 'Jualan Langsung', 'Kukunci', 'Langkah Demi Langkah Sayang', 
+            'Madah Berirama', 'Pentas Aksi', 'Pintar Bahasa', 'Profesor Serba Tahu', 'Sahutlah Panggilanku', 'Sorak Berentak', 'Stesen ke Stesen', 
+            'Suluh Pedoman', 'Tak Kenal Maka Tak Cinta', 'Teka Kata Pilihan', 'Telefon Cikgu', 'Terampil dan Teladan', 'Tiga Perkataan', 'Usahawan Muda'
         ];
 
-        const formatDate = (dateString) => {
-            if (!dateString) return '';
-            const d = new Date(dateString);
-            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        const compressImage = (base64Str, maxWidth = 600) => {
+            return new Promise((resolve) => {
+                const img = new Image(); img.src = base64Str;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas'); const scale = maxWidth / img.width;
+                    canvas.width = maxWidth; canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6));
+                };
+            });
         };
 
-        // --- KOMPONEN HEADER CETAKAN (REUSABLE) ---
-        const PrintHeader = ({ title, date }) => (
-            <div className="text-center mb-6 flex flex-col items-center border-b-2 border-slate-200 print:border-slate-800 pb-4">
-                {/* Fallback jika logo.png tiada */}
-                <div className="w-20 h-20 mb-2 bg-slate-200 rounded-full flex items-center justify-center print:border-2 print:border-slate-800">
-                    <span className="text-xs font-bold text-slate-500">LOGO</span>
-                </div>
-                <h1 className="text-xl font-black uppercase tracking-widest text-slate-900">SK PENDIDIKAN KHAS MIRI</h1>
-                <h2 className="text-sm font-bold uppercase mt-2 bg-slate-100 print:bg-transparent print:border-none px-4 py-1 rounded-full border border-slate-300 text-slate-800">
-                    {title} {date ? `• ${formatDate(date)}` : ''}
-                </h2>
-            </div>
-        );
+        const parseCSV = (str) => {
+            if (!str) return []; const arr = []; let quote = false; let row = 0, col = 0, c = 0;
+            for (; c < str.length; c++) {
+                let cc = str[c], nc = str[c+1]; arr[row] = arr[row] || []; arr[row][col] = arr[row][col] || '';
+                if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc == '"') { quote = !quote; continue; }
+                if (cc == ',' && !quote) { ++col; continue; }
+                if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr;
+        };
 
-        // --- KOMPONEN FOOTER CETAKAN (REUSABLE) ---
-        const PrintFooter = () => (
-            <div className="mt-8 pt-4 border-t-2 border-slate-800 text-center text-[10px] font-black uppercase text-slate-600 break-inside-avoid">
-                UNIT KOKURIKULUM SK PENDIDIKAN KHAS MIRI
-            </div>
-        );
+        const fetchCSVData = async (rawUrl) => {
+            if (!rawUrl) return null; const url = rawUrl.trim();
+            const proxies = [`https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, url];
+            for (let proxy of proxies) {
+                try { const res = await fetch(proxy); if (res.ok) { const text = await res.text(); if (text && !text.trim().startsWith('<!doctype')) return text; } } catch (e) { console.warn("Proxy failed..."); }
+            }
+            throw new Error('Gagal muat turun data dari Google Sheets.');
+        };
 
-        // --- KOMPONEN UTAMA APLIKASI ---
-        const App = () => {
-            const [activeTab, setActiveTab] = useState('analisis');
-            const [students, setStudents] = useState(initialStudents);
-            const [attendanceRecords, setAttendanceRecords] = useState([
-                { id: 'A1', aktiviti: 'KELAB ICT', tarikh: '2026-06-15', records: { 'S1': true, 'S2': true, 'S3': true, 'S4': true, 'S5': false, 'S6': false, 'S7': true, 'S8': true } },
-                { id: 'A2', aktiviti: 'KELAB ICT', tarikh: '2026-06-22', records: { 'S1': true, 'S2': true, 'S3': true, 'S4': true, 'S5': true, 'S6': false, 'S7': true, 'S8': false } }
-            ]);
-            const [reports, setReports] = useState([
-                 { id: 'R1', unit: 'KELAB ICT', tarikh: '2026-06-15', masa: '14:00', tajuk: 'Pengenalan Asas Komputer', kekuatan: 'Semua murid fokus.', kelemahan: 'Kekurangan PC.', penambahbaikan: 'Bawa laptop sendiri.' }
-            ]);
+        function App() {
+            const [user, setUser] = useState(null);
+            const [currentView, setCurrentView] = useState('laporan_baru');
+            const [editingReport, setEditingReport] = useState(null);
+            const [toast, setToast] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+            const [reports, setReports] = useState([]);
+            const [attendanceRecords, setAttendanceRecords] = useState([]);
+            const [students, setStudents] = useState([]);
+            const [teachers, setTeachers] = useState([]);
+            const [activities, setActivities] = useState(['MENGAMBIL DATA...']);
+            const [csvLinkMurid, setCsvLinkMurid] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vRyXz6iABc4zz0gpRMqo0xgzZtUmw9BSwkrbYq2Mc0c0hcnwg-pZTIm9XE1S2g5B_4wnblhRSAiO28V/pub?gid=0&single=true&output=csv');
+            const [csvLinkGuru, setCsvLinkGuru] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vRyXz6iABc4zz0gpRMqo0xgzZtUmw9BSwkrbYq2Mc0c0hcnwg-pZTIm9XE1S2g5B_4wnblhRSAiO28V/pub?gid=33896881&single=true&output=csv');
 
-            // --- VIEW: ANALISIS & RUMUSAN ---
-            const AnalisisView = () => {
-                const [subTab, setSubTab] = useState('keseluruhan');
-                const [selectedClub, setSelectedClub] = useState('KELAB ICT');
-                const clubs = [...new Set(students.map(s => s.act1))];
+            const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
-                const generatePDF = (elementId, filename) => {
-                    const el = document.getElementById(elementId);
-                    el.classList.add('single-page-print');
-                    const opt = { 
-                        margin: 10, 
-                        filename: `${filename}.pdf`, 
-                        image: { type: 'jpeg', quality: 0.80 }, 
-                        html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 }, 
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true } 
-                    };
-                    html2pdf().from(el).set(opt).save().then(() => el.classList.remove('single-page-print'));
-                };
+            useEffect(() => {
+                const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { console.error(e); } };
+                initAuth();
+                const unsubscribe = onAuthStateChanged(auth, u => { setUser(u); if (u) setIsLoading(false); });
+                return () => unsubscribe();
+            }, []);
 
-                const printDocument = (elementId) => {
-                    const el = document.getElementById(elementId);
-                    el.classList.add('single-page-print');
-                    window.print();
-                    el.classList.remove('single-page-print');
-                };
-
-                // Pengiraan Analisis
-                const clubStudents = students.filter(s => s.act1 === selectedClub || s.act2 === selectedClub || s.act3 === selectedClub);
-                const relevantAttendance = attendanceRecords.filter(r => r.aktiviti === selectedClub);
-                const studentStats = {};
-                
-                clubStudents.forEach(s => {
-                    studentStats[s.id] = { hadir: 0, sesi: relevantAttendance.length };
-                    relevantAttendance.forEach(r => { if (r.records[s.id]) studentStats[s.id].hadir++; });
+            useEffect(() => {
+                if (!user) return;
+                const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), d => {
+                    if (d.exists()) { const data = d.data(); if (data.csvLinkMurid) setCsvLinkMurid(data.csvLinkMurid); if (data.csvLinkGuru) setCsvLinkGuru(data.csvLinkGuru); }
                 });
+                const unsubReports = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), s => {
+                    setReports(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                });
+                const unsubAttendance = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), s => {
+                    setAttendanceRecords(s.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => b.timestamp - a.timestamp));
+                });
+                return () => { unsubConfig(); unsubReports(); unsubAttendance(); };
+            }, [user]);
 
-                const totalHadir = clubStudents.reduce((sum, s) => sum + studentStats[s.id].hadir, 0);
-                const totalSesi = clubStudents.reduce((sum, s) => sum + studentStats[s.id].sesi, 0);
-                const overallPercentage = totalSesi === 0 ? 0 : Math.round((totalHadir / (totalSesi)) * 100);
-
-                // --- FUNGSI JANA EXCEL (Analisis Kelab) ---
-                const downloadExcelKelab = () => {
-                    const tableData = [
-                        ["Bil", "Nama Murid", "Hadir", "Sesi", "Peratusan (%)"]
-                    ];
-                    clubStudents.forEach((s, idx) => {
-                        const stat = studentStats[s.id];
-                        const pct = stat.sesi === 0 ? 0 : Math.round((stat.hadir/stat.sesi)*100);
-                        tableData.push([idx + 1, s.name, stat.hadir, stat.sesi, pct]);
-                    });
-                    tableData.push([]); // Baris kosong
-                    tableData.push(["", "", `JUMLAH KESELURUHAN PERATUSAN ${selectedClub}:`, "", `${overallPercentage}%`]);
-
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.aoa_to_sheet(tableData);
-                    ws['!cols'] = [{wch: 5}, {wch: 40}, {wch: 10}, {wch: 10}, {wch: 15}]; // Tetapkan lebar lajur
-                    XLSX.utils.book_append_sheet(wb, ws, "Analisis Kelab");
-                    XLSX.writeFile(wb, `Analisis_Kehadiran_${selectedClub.replace(/\s+/g, '_')}.xlsx`);
+            useEffect(() => {
+                const syncData = async () => {
+                    try {
+                        const mText = await fetchCSVData(csvLinkMurid); const mRows = parseCSV(mText);
+                        let sList = []; let aSet = new Set();
+                        for (let i = 1; i < mRows.length; i++) {
+                            const name = (mRows[i][0] || '').trim(); const act1 = (mRows[i][1] || '').trim().toUpperCase();
+                            const act2 = (mRows[i][2] || '').trim().toUpperCase(); const act3 = (mRows[i][3] || '').trim().toUpperCase();
+                            if (name && name.toLowerCase() !== 'nama murid') {
+                                sList.push({ id: `S${i}`, name, act1, act2, act3 });
+                                if (act1 && act1 !== '-') aSet.add(act1); if (act2 && act2 !== '-') aSet.add(act2); if (act3 && act3 !== '-') aSet.add(act3);
+                            }
+                        }
+                        setStudents(sList.sort((a,b) => a.name.localeCompare(b.name)));
+                        if (aSet.size > 0) setActivities(Array.from(aSet).sort());
+                        const gText = await fetchCSVData(csvLinkGuru); const gRows = parseCSV(gText);
+                        let gList = [];
+                        for (let i = 1; i < gRows.length; i++) {
+                            const name = (gRows[i][0] || '').trim().toUpperCase(); if (name && name !== 'NAMA GURU') gList.push(name);
+                        }
+                        setTeachers(gList.sort());
+                    } catch (e) { console.error(e); }
                 };
+                syncData();
+            }, [csvLinkMurid, csvLinkGuru]);
 
-                // --- FUNGSI JANA EXCEL (Rumusan Murid) ---
-                const downloadExcelMurid = () => {
-                    const tableData = [
-                        ["Bil", "Nama Penuh Murid", "KELAB", "SUKAN", "BADAN UNIFORM"]
-                    ];
-                    students.forEach((s, idx) => {
-                        tableData.push([idx + 1, s.name, s.act1 || '-', s.act2 || '-', s.act3 || '-']);
-                    });
-
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.aoa_to_sheet(tableData);
-                    ws['!cols'] = [{wch: 5}, {wch: 40}, {wch: 20}, {wch: 20}, {wch: 20}];
-                    XLSX.utils.book_append_sheet(wb, ws, "Rumusan Murid");
-                    XLSX.writeFile(wb, `Rumusan_Unit_Murid.xlsx`);
+            const LaporanForm = () => {
+                const initialForm = editingReport || {
+                    perjumpaan: '1', unit: activities[0] || '', tarikh: '', tajuk: '', aktiviti: '', laporanMurid: null, rumusan: '', kemahiranBerfikir: '', 
+                    kataKerjaKbat: '', ulasanKbat: '', pikebm: '', disediakanOleh: '', namaDisediakan: '', ulasan1: '', ulasan2: '', ulasan3: '', ulasan4: '', ulasan5: '', ulasan6: '',
+                    gambar1: null, gambar2: null, gambar3: null, gambar4: null, gambar5: null, gambar6: null
                 };
+                const [form, setForm] = useState(initialForm);
+                const KBAT_OPTS = ['', '1. MENGAPLIKASI', '2. MENGANALISIS', '3. MENILAI', '4. MENCIPTA'];
+                const VERB_OPTS = ['', '1. MENUNJUKKAN', '1. MENGAPLIKASI', '1. MENGGUNA', '1. MELENGKAP', '1. MEMBINA', '1. MENGHASIL', '2. MENGKATEGORI', '2. MENGUJI', '2. MEMBEZAKAN', '2. MEMBANDING', '2. MENTAFSIR', '3. MEMBUAT KEPUTUSAN', '3. MEMILIH', '3. MENENTUKAN', '3. MENCADANG', '3. MEMBAHAS', '3. MENILAI', '3. MEMBERI ALASAN', '4. MENCIPTA', '4. MERANCANG', '4. MENGUBAH', '4. MEREKA BENTUK', '4. MELAKAR', '4. MENGHASILKAN'];
+                
+                const handleFile = async (e, field) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader(); reader.onload = async (event) => { const res = await compressImage(event.target.result); setForm(prev => ({ ...prev, [field]: res })); };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    try {
+                        if (editingReport) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', editingReport.id), { ...form, timestamp: Date.now() }); showToast('Laporan berjaya dikemaskini!'); }
+                        else { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), { ...form, timestamp: Date.now(), createdBy: user.uid, eSignPenyemak: null, eSignGuru: null }); showToast('Laporan berjaya disimpan!'); }
+                        setEditingReport(null); setCurrentView('rekod_laporan');
+                    } catch (err) { showToast('Ralat simpan.'); }
+                };
+                const ImageBox = ({ label, field }) => (
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">{label}</label>
+                        {form[field] ? (
+                            <div className="relative group"><img src={form[field]} className="h-32 w-full object-cover rounded-lg border shadow-sm" /><button type="button" onClick={() => setForm({...form, [field]: null})} className="absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs shadow-md">X</button></div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition"><span className="text-xl">📷</span><span className="text-[10px] text-slate-400 mt-1 uppercase font-bold text-center px-2">Klik Pilih Gambar</span><input type="file" accept="image/*" className="hidden" onChange={e => handleFile(e, field)} /></label>
+                        )}
+                    </div>
+                );
+                return (
+                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.PenTool /> {editingReport ? 'Kemaskini Laporan' : 'Daftar Laporan Mingguan'}</h2>
+                        <form onSubmit={handleSubmit} className="space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-slate-700 text-sm">
+                                <div><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Perjumpaan</label><select className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.perjumpaan} onChange={e => setForm({...form, perjumpaan: e.target.value})}>{Array.from({length: 20}, (_, i) => i + 1).map(num => <option key={num} value={num}>{num}</option>)}</select></div>
+                                <div><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Unit / Kelab</label><select className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.unit} onChange={e => setForm({...form, unit: e.target.value})}>{activities.map(act => <option key={act} value={act}>{act}</option>)}</select></div>
+                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tarikh*</label><input type="date" required className="w-full p-3 border rounded-lg outline-none bg-white font-bold" value={form.tarikh} onChange={e => setForm({...form, tarikh: e.target.value})} /></div>
+                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Tajuk Aktiviti*</label><input type="text" required className="w-full p-3 border rounded-lg outline-none bg-white font-bold" placeholder="Contoh: Latihan Kawad Kaki" value={form.tajuk} onChange={e => setForm({...form, tajuk: e.target.value})} /></div>
+                            </div>
+                            <div className="space-y-4 text-sm text-slate-700">
+                                <textarea rows="4" placeholder="Huraian Aktiviti*" required className="w-full p-4 border rounded-xl outline-none bg-slate-50 focus:bg-white transition" value={form.aktiviti} onChange={e => setForm({...form, aktiviti: e.target.value})} />
+                                <textarea rows="3" placeholder="Rumusan / Refleksi*" required className="w-full p-4 border rounded-xl outline-none bg-slate-50 focus:bg-white transition" value={form.rumusan} onChange={e => setForm({...form, rumusan: e.target.value})} />
+                            </div>
+                            <ImageBox label="Laporan Murid (Lampiran)" field="laporanMurid" />
+                            
+                            {/* ELEMEN KBAT */}
+                            <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-4">
+                                <h3 className="font-bold text-blue-900 text-xs uppercase tracking-widest">Elemen KBAT</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <select required className="p-3 border rounded-lg bg-white text-sm font-bold text-slate-700" value={form.kemahiranBerfikir} onChange={e => setForm({...form, kemahiranBerfikir: e.target.value})}>{KBAT_OPTS.map(opt => <option key={opt} value={opt}>{opt || 'Kemahiran Berfikir'}</option>)}</select>
+                                    <select required className="p-3 border rounded-lg bg-white text-sm font-bold text-slate-700" value={form.kataKerjaKbat} onChange={e => setForm({...form, kataKerjaKbat: e.target.value})}>{VERB_OPTS.map(opt => <option key={opt} value={opt}>{opt || 'Kata Kerja KBAT'}</option>)}</select>
+                                </div>
+                                <input type="text" required className="w-full p-3 border rounded-lg bg-white outline-none text-sm text-slate-700" placeholder="Ulasan elemen KBAT..." value={form.ulasanKbat} onChange={e => setForm({...form, ulasanKbat: e.target.value})} />
+                            </div>
+
+                            {/* ELEMEN PIKeBM */}
+                            <div className="bg-green-50 p-5 rounded-2xl border border-green-100 space-y-4">
+                                <h3 className="font-bold text-green-900 text-xs uppercase tracking-widest">Elemen PIKeBM</h3>
+                                <select required className="w-full p-3 border rounded-lg bg-white text-sm font-bold text-slate-700" value={form.pikebm} onChange={e => setForm({...form, pikebm: e.target.value})}>
+                                    {PIKEBM_OPTS.map(opt => <option key={opt} value={opt}>{opt || 'Sila Pilih Aktiviti PIKeBM'}</option>)}
+                                </select>
+                            </div>
+
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-6 text-slate-700">
+                                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-widest text-center">Dokumentasi Bergambar (Maksimum 6)</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {[1, 2, 3, 4, 5, 6].map(num => (
+                                        <div key={num} className="bg-white p-3 rounded-xl shadow-sm space-y-3">
+                                            <ImageBox label={`Gambar ${num}`} field={`gambar${num}`} />
+                                            <input type="text" className="w-full p-2 border rounded-lg text-[10px] outline-none" placeholder={`Ulasan Gambar ${num}...`} value={form[`ulasan${num}`] || ''} onChange={e => setForm({...form, [`ulasan${num}`]: e.target.value})} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="pt-6 border-t"><label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-widest text-center">Sila Pilih Nama Anda (Guru Penasihat)</label><select required className="w-full p-4 border rounded-xl bg-blue-50 font-black uppercase text-xs text-blue-700" value={form.namaDisediakan} onChange={e => setForm({...form, namaDisediakan: e.target.value, disediakanOleh: e.target.value})}><option value="">-- SILA PILIH NAMA GURU --</option>{teachers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <div className="flex gap-4">
+                                {editingReport && (<button type="button" onClick={() => { setEditingReport(null); setCurrentView('rekod_laporan'); }} className="flex-1 py-5 bg-slate-200 text-slate-700 font-black rounded-2xl uppercase tracking-widest">Batal</button>)}
+                                <button type="submit" className="flex-[2] py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition transform hover:scale-[1.01] uppercase tracking-[0.2em]">{editingReport ? 'Kemaskini Laporan' : 'Simpan Laporan Cloud'}</button>
+                            </div>
+                        </form>
+                    </div>
+                );
+            };
+
+            const RekodLaporan = () => {
+                const [selected, setSelected] = useState(null); const [isSigning, setIsSigning] = useState(false);
+                const [signingType, setSigningType] = useState(null); const [filterClub, setFilterClub] = useState('SEMUA');
+                const [showDeleteConfirm, setShowDeleteConfirm] = useState(null); const canvasRef = useRef(null);
+                const filteredReports = useMemo(() => filterClub === 'SEMUA' ? reports : reports.filter(r => r.unit === filterClub), [reports, filterClub]);
+                const saveSign = async () => {
+                    if (!canvasRef.current) return; const data = canvasRef.current.toDataURL('image/png');
+                    const field = signingType === 'guru' ? 'eSignGuru' : 'eSignPenyemak';
+                    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', selected.id), { [field]: data }); setSelected({...selected, [field]: data}); setIsSigning(false); showToast('Tandatangan disimpan!'); } catch (e) { showToast('Ralat simpan.'); }
+                };
+                const handleDelete = async (id) => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', id)); showToast('Laporan telah dipadam!'); setShowDeleteConfirm(null); setSelected(null); } catch (e) { showToast('Ralat padam.'); } };
+                const downloadPDF = () => {
+                    const el = document.getElementById('pdf-content'); const opt = { margin: 10, filename: `Laporan_${selected.unit}_${selected.tarikh}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+                    html2pdf().from(el).set(opt).save();
+                };
+                useEffect(() => {
+                    if (!isSigning || !canvasRef.current) return;
+                    const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; let d = false;
+                    const getP = (e) => { const r = c.getBoundingClientRect(); let cx = e.touches ? e.touches[0].clientX : e.clientX; let cy = e.touches ? e.touches[0].clientY : e.clientY; return { x: cx - r.left, y: cy - r.top }; };
+                    const m = (e) => { if (!d) return; e.preventDefault(); const p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+                    const s = (e) => { e.preventDefault(); d = true; const p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+                    const eL = () => { d = false; ctx.closePath(); };
+                    c.addEventListener('mousedown', s); c.addEventListener('mousemove', m); window.addEventListener('mouseup', eL);
+                    c.addEventListener('touchstart', s, { passive: false }); c.addEventListener('touchmove', m, { passive: false }); c.addEventListener('touchend', eL);
+                    return () => { c.removeEventListener('mousedown', s); c.removeEventListener('mousemove', m); window.removeEventListener('mouseup', eL); c.removeEventListener('touchstart', s); c.removeEventListener('touchmove', m); c.removeEventListener('touchend', eL); };
+                }, [isSigning]);
+
+                if (selected) {
+                    const picList = [1, 2, 3, 4, 5, 6].map(n => ({ img: selected[`gambar${n}`], ulasan: selected[`ulasan${n}`] })).filter(x => x.img);
+                    return (
+                        <div className="bg-white p-4 md:p-12 border-2 border-slate-200 shadow-2xl rounded-2xl relative animate-in fade-in duration-300 text-slate-800 text-sm">
+                            <div className="flex flex-wrap justify-between items-center gap-2 mb-8 print:hidden text-slate-700">
+                                <button onClick={()=>setSelected(null)} className="text-blue-600 font-bold flex items-center gap-1">&larr; KEMBALI</button>
+                                <div className="flex flex-wrap gap-2 text-xs">
+                                    <button onClick={() => { setEditingReport(selected); setCurrentView('laporan_baru'); }} className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-blue-200"><Icons.Edit /> KEMASKINI</button>
+                                    <button onClick={() => setShowDeleteConfirm(selected.id)} className="bg-red-50 text-red-600 px-3 py-2 rounded-lg font-bold flex items-center gap-2 border border-red-200"><Icons.Trash /> PADAM</button>
+                                    <button onClick={downloadPDF} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg"><Icons.Download /> SIMPAN PDF</button>
+                                    <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Icons.Printer /> CETAK</button>
+                                </div>
+                            </div>
+                            <div id="pdf-content" className="p-4 md:p-10 border border-slate-100">
+                                <div className="text-center mb-8 flex flex-col items-center">
+                                    <img src="logo.png" onError={(e)=>e.target.style.display='none'} className="w-24 h-24 object-contain mb-4" />
+                                    <h1 className="text-2xl font-bold uppercase underline">LAPORAN {selected.unit}</h1>
+                                    <p className="font-bold mt-1 uppercase">SK PENDIDIKAN KHAS MIRI</p>
+                                </div>
+                                <table className="w-full border-collapse border-2 border-slate-800 text-[11px] mb-6">
+                                    <tbody>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Perjumpaan Ke</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold text-lg">{selected.perjumpaan}</td><td className="border-2 border-slate-800 p-2 font-bold w-1/4 bg-slate-50 uppercase text-center">Tarikh</td><td className="border-2 border-slate-800 p-2 w-1/4 text-center font-bold">{selected.tarikh}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Tajuk Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold uppercase">{selected.tajuk}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Huraian Aktiviti</td><td colSpan="3" className="border-2 border-slate-800 p-2 whitespace-pre-wrap h-32">{selected.aktiviti}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 align-top uppercase text-center">Rumusan / Refleksi</td><td colSpan="3" className="border-2 border-slate-800 p-2 italic h-20">{selected.rumusan}</td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Elemen KBAT</td><td colSpan="3" className="border-2 border-slate-800 p-2">
+                                            <div className="font-bold underline uppercase">{selected.kemahiranBerfikir} - {selected.kataKerjaKbat}</div>
+                                            <div className="mt-1">{selected.ulasanKbat}</div>
+                                        </td></tr>
+                                        <tr><td className="border-2 border-slate-800 p-2 font-bold bg-slate-50 uppercase text-center">Elemen PIKeBM</td><td colSpan="3" className="border-2 border-slate-800 p-2 font-bold">{selected.pikebm}</td></tr>
+                                    </tbody>
+                                </table>
+
+                                {picList.length > 0 && (
+                                    <div className="mb-6 break-inside-avoid">
+                                        <div className="font-bold bg-slate-800 text-white p-2 text-center uppercase text-xs mb-4">Laporan Bergambar</div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {picList.map((p, i) => (
+                                                <div key={i} className="border-2 border-slate-800 p-2 break-inside-avoid">
+                                                    <img src={p.img} className="w-full h-40 object-cover border border-slate-200 mb-2" />
+                                                    <div className="text-[10px] text-center border-t pt-1 font-bold">{p.ulasan || `Gambar ${i+1}`}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selected.laporanMurid && (
+                                    <div className="mb-6 break-inside-avoid">
+                                        <div className="font-bold bg-slate-800 text-white p-2 text-center uppercase text-xs mb-4">Lampiran (Hasil Kerja Murid)</div>
+                                        <img src={selected.laporanMurid} className="w-full max-h-96 object-contain border-2 border-slate-800 p-2 mx-auto" />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-8 mt-12 break-inside-avoid">
+                                    <div className="text-center">
+                                        <p className="text-xs font-bold mb-8">Disediakan Oleh:</p>
+                                        {selected.eSignGuru ? (
+                                            <div className="relative inline-block">
+                                                <img src={selected.eSignGuru} className="h-20 mx-auto" />
+                                                <button onClick={()=>{setSigningType('guru');setIsSigning(true);}} className="absolute -right-6 top-0 text-slate-400 hover:text-blue-600 print:hidden"><Icons.Edit /></button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={()=>{setSigningType('guru');setIsSigning(true);}} className="h-20 w-40 mx-auto border-b-2 border-dashed border-slate-400 flex items-end justify-center pb-2 text-xs text-blue-600 font-bold hover:bg-blue-50 print:hidden">Klik Untuk T.Tangan</button>
+                                        )}
+                                        <div className="border-t-2 border-slate-800 w-3/4 mx-auto pt-2 mt-2">
+                                            <p className="font-bold uppercase text-[11px]">{selected.namaDisediakan}</p>
+                                            <p className="text-[10px]">Guru Penasihat, {selected.unit}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs font-bold mb-8">Disemak & Disahkan Oleh:</p>
+                                        {selected.eSignPenyemak ? (
+                                            <div className="relative inline-block">
+                                                <img src={selected.eSignPenyemak} className="h-20 mx-auto" />
+                                                <button onClick={()=>{setSigningType('penyemak');setIsSigning(true);}} className="absolute -right-6 top-0 text-slate-400 hover:text-blue-600 print:hidden"><Icons.Edit /></button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={()=>{setSigningType('penyemak');setIsSigning(true);}} className="h-20 w-40 mx-auto border-b-2 border-dashed border-slate-400 flex items-end justify-center pb-2 text-xs text-blue-600 font-bold hover:bg-blue-50 print:hidden">Klik Untuk T.Tangan</button>
+                                        )}
+                                        <div className="border-t-2 border-slate-800 w-3/4 mx-auto pt-2 mt-2">
+                                            <p className="font-bold uppercase text-[11px]">&nbsp;</p>
+                                            <p className="text-[10px]">PK Kokurikulum / Guru Besar</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
 
                 return (
-                    <div className="space-y-6">
-                        <div className="flex flex-wrap gap-2 print:hidden mb-6">
-                            <button onClick={() => setSubTab('keseluruhan')} className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${subTab === 'keseluruhan' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600 border'}`}>Analisis Sekolah</button>
-                            <button onClick={() => setSubTab('kelab')} className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${subTab === 'kelab' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600 border'}`}>Analisis Kelab</button>
-                            <button onClick={() => setSubTab('murid')} className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${subTab === 'murid' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600 border'}`}>Rumusan Murid</button>
+                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Icons.Archive /> Arkib Laporan</h2>
+                            <select className="p-3 border rounded-xl bg-slate-50 font-bold text-sm outline-none w-full md:w-auto" value={filterClub} onChange={e=>setFilterClub(e.target.value)}>
+                                <option value="SEMUA">Semua Unit / Kelab</option>
+                                {activities.map(act => <option key={act} value={act}>{act}</option>)}
+                            </select>
                         </div>
-
-                        {/* SUBTAB: ANALISIS SEKOLAH */}
-                        {}
-                        {subTab === 'keseluruhan' && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <div className="flex justify-between items-center mb-6 print:hidden">
-                                    <h2 className="text-lg font-bold text-slate-800">Prestasi Keseluruhan Sekolah</h2>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => generatePDF('print-keseluruhan', 'Analisis_Keseluruhan')} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Download/> Simpan PDF</button>
-                                        <button onClick={() => printDocument('print-keseluruhan')} className="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Printer/> Cetak</button>
+                        {filteredReports.length === 0 ? (
+                            <div className="text-center p-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                <div className="text-4xl mb-4 opacity-50">📭</div>
+                                <p className="text-slate-500 font-bold">Tiada laporan dijumpai.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {filteredReports.map(r => (
+                                    <div key={r.id} onClick={()=>setSelected(r)} className="bg-slate-50 p-5 rounded-2xl border border-slate-200 cursor-pointer hover:shadow-lg hover:-translate-y-1 transition duration-300 group">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">Perjumpaan {r.perjumpaan}</span>
+                                            <span className="text-xs font-bold text-slate-500">{r.tarikh}</span>
+                                        </div>
+                                        <h3 className="font-bold text-slate-800 leading-tight mb-1 group-hover:text-blue-600 transition">{r.tajuk}</h3>
+                                        <p className="text-[11px] text-slate-500 font-semibold mb-4 uppercase">{r.unit}</p>
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <span className="text-slate-400 font-medium truncate pr-2">Oleh: {r.namaDisediakan}</span>
+                                            <div className="flex gap-1">
+                                                {r.eSignGuru && <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-[8px] font-bold">✓ GURU</span>}
+                                                {r.eSignPenyemak && <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-[8px] font-bold">✓ PK</span>}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div id="print-keseluruhan" className="p-4">
-                                    <PrintHeader title="ANALISIS KESELURUHAN KEHADIRAN KOKURIKULUM" />
-                                    <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-8 text-center mb-8">
-                                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Purata Kehadiran Semasa</p>
-                                        <p className="text-6xl font-black text-blue-600 mb-4">{overallPercentage}%</p>
-                                        <p className="text-xs text-slate-500 max-w-md mx-auto">Purata Peratusan terkumpul kehadiran murid bagi keseluruhan kelab, sukan, dan badan uniform berdasarkan data yang direkodkan.</p>
-                                    </div>
-                                    <PrintFooter />
-                                </div>
+                                ))}
                             </div>
                         )}
-
-                        {/* SUBTAB: ANALISIS KELAB */}
-                        {}
-                        {subTab === 'kelab' && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 print:hidden">
-                                    <select value={selectedClub} onChange={(e) => setSelectedClub(e.target.value)} className="w-full sm:w-auto p-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-bold focus:ring-2 focus:ring-blue-500 outline-none">
-                                        {clubs.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                    <div className="flex gap-2 w-full sm:w-auto">
-                                        <button onClick={downloadExcelKelab} className="flex-1 sm:flex-none justify-center bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Excel/> Excel</button>
-                                        <button onClick={() => generatePDF('print-kelab', `Analisis_${selectedClub.replace(/\s+/g, '_')}`)} className="flex-1 sm:flex-none justify-center bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Download/> Simpan PDF</button>
-                                        <button onClick={() => printDocument('print-kelab')} className="flex-1 sm:flex-none justify-center bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Printer/> Cetak</button>
+                        {isSigning && (
+                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 print:hidden">
+                                <div className="bg-white p-6 rounded-2xl max-w-md w-full shadow-2xl">
+                                    <h3 className="font-black mb-4 text-center">Tandatangan Digital ({signingType === 'guru' ? 'Guru' : 'Penyemak'})</h3>
+                                    <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 mb-4 overflow-hidden relative touch-none">
+                                        <canvas ref={canvasRef} width={400} height={200} className="w-full signature-pad bg-transparent touch-none cursor-crosshair"></canvas>
                                     </div>
-                                </div>
-                                <div id="print-kelab" className="p-4">
-                                    <PrintHeader title={`ANALISIS KEHADIRAN ${selectedClub}`} />
-                                    <table className="w-full text-sm text-left border-collapse border-2 border-slate-800 mb-6">
-                                        <thead className="bg-slate-100">
-                                            <tr>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center w-12">Bil</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black">Nama Murid</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center w-24">Hadir/Sesi</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center w-24">%</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {clubStudents.map((s, idx) => {
-                                                const stat = studentStats[s.id];
-                                                const pct = stat.sesi === 0 ? 0 : Math.round((stat.hadir/stat.sesi)*100);
-                                                return (
-                                                    <tr key={s.id} className="hover:bg-slate-50">
-                                                        <td className="p-2 border-2 border-slate-800 text-center font-medium text-slate-600">{idx+1}</td>
-                                                        <td className="p-2 border-2 border-slate-800 font-bold uppercase text-slate-800">{s.name}</td>
-                                                        <td className="p-2 border-2 border-slate-800 text-center text-slate-600">{stat.hadir} / {stat.sesi}</td>
-                                                        <td className="p-2 border-2 border-slate-800 text-center font-bold">
-                                                            <span className={`px-2 py-1 rounded ${pct >= 80 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{pct}%</span>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                            {/* Baris Jumlah Keseluruhan Kelab */}
-                                            <tr className="bg-slate-100">
-                                                <td colSpan="3" className="p-2 border-2 border-slate-800 text-right font-black uppercase tracking-wider text-slate-800">JUMLAH KESELURUHAN PERATUSAN {selectedClub}:</td>
-                                                <td className="p-2 border-2 border-slate-800 text-center font-black">
-                                                    <span className={`px-2 py-1 rounded ${overallPercentage >= 80 ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>{overallPercentage}%</span>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                    <PrintFooter />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* SUBTAB: RUMUSAN MURID */}
-                        {}
-                        {subTab === 'murid' && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <div className="flex justify-between items-center mb-6 print:hidden">
-                                    <h2 className="text-lg font-bold text-slate-800">Pendaftaran & Unit Murid</h2>
-                                    <div className="flex gap-2">
-                                        <button onClick={downloadExcelMurid} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Excel/> Excel</button>
-                                        <button onClick={() => generatePDF('print-murid', 'Senarai_Unit_Murid')} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Download/> Simpan PDF</button>
-                                        <button onClick={() => printDocument('print-murid')} className="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Icons.Printer/> Cetak</button>
+                                    <div className="flex gap-3">
+                                        <button onClick={()=>setIsSigning(false)} className="flex-1 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl">Batal</button>
+                                        <button onClick={()=>{const c=canvasRef.current; c.getContext('2d').clearRect(0,0,c.width,c.height);}} className="flex-1 py-3 bg-amber-100 text-amber-700 font-bold rounded-xl">Padam</button>
+                                        <button onClick={saveSign} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl">Simpan</button>
                                     </div>
-                                </div>
-                                <div id="print-murid" className="p-4">
-                                    <PrintHeader title="RUMUSAN PENDAFTARAN UNIT KOKURIKULUM MURID" />
-                                    <table className="w-full text-xs text-left border-collapse border-2 border-slate-800 mb-6">
-                                        <thead className="bg-slate-100">
-                                            <tr>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center w-10">Bil</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black w-1/3">Nama Penuh Murid</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">KELAB</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">SUKAN</th>
-                                                <th className="p-2 border-2 border-slate-800 uppercase font-black text-center">BADAN UNIFORM</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {students.map((s, idx) => (
-                                                <tr key={s.id} className="hover:bg-slate-50">
-                                                    <td className="p-2 border-2 border-slate-800 text-center font-medium">{idx + 1}</td>
-                                                    <td className="p-2 border-2 border-slate-800 font-bold uppercase">{s.name}</td>
-                                                    <td className="p-2 border-2 border-slate-800 text-center uppercase text-slate-600">{s.act1 || '-'}</td>
-                                                    <td className="p-2 border-2 border-slate-800 text-center uppercase text-slate-600">{s.act2 || '-'}</td>
-                                                    <td className="p-2 border-2 border-slate-800 text-center uppercase text-slate-600">{s.act3 || '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    <PrintFooter />
                                 </div>
                             </div>
                         )}
@@ -328,74 +441,273 @@
                 );
             };
 
-            // --- MAIN RENDER ---
-            return (
-                <div className="min-h-screen flex flex-col relative bg-slate-50">
-                    {/* Header Penuh Aplikasi */}
-                    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 print:hidden shadow-sm">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between items-center h-16">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-blue-600 text-white p-2 rounded-lg shadow">
-                                        <Icons.School />
+            const Kehadiran = () => {
+                const [selectedClub, setSelectedClub] = useState(activities[0] || '');
+                const [searchQuery, setSearchQuery] = useState('');
+                const [attendanceMap, setAttendanceMap] = useState({});
+                
+                const filteredStudents = useMemo(() => {
+                    let list = students.filter(s => s.act1 === selectedClub || s.act2 === selectedClub || s.act3 === selectedClub);
+                    if (searchQuery) {
+                        const q = searchQuery.toLowerCase();
+                        list = list.filter(s => s.name.toLowerCase().includes(q));
+                    }
+                    return list;
+                }, [students, selectedClub, searchQuery]);
+
+                const getTodayDateStr = () => {
+                    const d = new Date();
+                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                };
+
+                const todayStr = getTodayDateStr();
+
+                useEffect(() => {
+                     const todayRecords = attendanceRecords.filter(r => r.date === todayStr && r.club === selectedClub);
+                     const initialMap = {};
+                     todayRecords.forEach(r => {
+                         initialMap[r.studentId] = r.status; 
+                     });
+                     setAttendanceMap(initialMap);
+                }, [attendanceRecords, selectedClub, todayStr]);
+
+                const toggleAttendance = async (studentId, currentStatus) => {
+                    if (!user) return;
+                    const newStatus = currentStatus === 'hadir' ? 'tidak_hadir' : 'hadir';
+                    setAttendanceMap(prev => ({...prev, [studentId]: newStatus}));
+
+                    try {
+                        const existingRecord = attendanceRecords.find(r => r.date === todayStr && r.club === selectedClub && r.studentId === studentId);
+                        if (existingRecord) {
+                            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', existingRecord.id), { status: newStatus, timestamp: Date.now() });
+                        } else {
+                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'attendance'), {
+                                studentId,
+                                club: selectedClub,
+                                date: todayStr,
+                                status: newStatus,
+                                timestamp: Date.now(),
+                                createdBy: user.uid
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Error updating attendance:", e);
+                        showToast("Ralat kemaskini kehadiran");
+                        setAttendanceMap(prev => ({...prev, [studentId]: currentStatus}));
+                    }
+                };
+
+                return (
+                     <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Icons.Users /> Kehadiran Murid</h2>
+                            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                                <select className="p-3 border rounded-xl bg-slate-50 font-bold text-sm outline-none" value={selectedClub} onChange={e=>setSelectedClub(e.target.value)}>
+                                    {activities.map(act => <option key={act} value={act}>{act}</option>)}
+                                </select>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                                     </div>
-                                    <div>
-                                        <h1 className="text-xl font-black text-slate-800 leading-tight tracking-tight">eKoku</h1>
-                                        <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-wider">Sistem Pengurusan Kokurikulum</p>
-                                    </div>
+                                    <input type="text" placeholder="Cari nama..." className="pl-10 pr-4 py-3 border rounded-xl bg-slate-50 text-sm outline-none w-full" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} />
                                 </div>
                             </div>
                         </div>
-                    </header>
 
-                    {/* Navigasi Utama */}
-                    <div className="bg-white border-b border-slate-200 print:hidden overflow-x-auto">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex space-x-8 min-w-max">
-                                {[
-                                    { id: 'analisis', label: 'Analisis & Cetakan', icon: Icons.Chart },
-                                    { id: 'kehadiran', label: 'Rekod Kehadiran', icon: Icons.Users },
-                                    { id: 'laporan', label: 'Laporan Aktiviti', icon: Icons.FileText }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 py-4 px-2 border-b-2 font-bold text-sm transition-colors whitespace-nowrap ${
-                                            activeTab === tab.id 
-                                            ? 'border-blue-600 text-blue-600' 
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                        }`}
-                                    >
-                                        <tab.icon /> {tab.label}
-                                    </button>
-                                ))}
+                        <div className="bg-blue-50 rounded-xl p-4 mb-6 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-blue-900">Tarikh Hari Ini</h3>
+                                <p className="text-sm text-blue-700">{todayStr}</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-2xl font-black text-blue-900">{Object.values(attendanceMap).filter(s => s === 'hadir').length}</span>
+                                <span className="text-sm font-bold text-blue-700"> / {filteredStudents.length} Hadir</span>
+                            </div>
+                        </div>
+
+                        {filteredStudents.length === 0 ? (
+                             <div className="text-center p-12 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                <p className="text-slate-500 font-bold">Tiada murid dijumpai untuk {selectedClub}.</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-100 text-slate-600 text-[10px] uppercase tracking-wider">
+                                            <th className="p-3 rounded-tl-lg">Bil</th>
+                                            <th className="p-3">Nama Murid</th>
+                                            <th className="p-3 text-center rounded-tr-lg">Tindakan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-sm">
+                                        {filteredStudents.map((student, idx) => {
+                                            const status = attendanceMap[student.id];
+                                            const isPresent = status === 'hadir';
+                                            return (
+                                                <tr key={student.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                                                    <td className="p-3 text-slate-400 font-medium">{idx + 1}</td>
+                                                    <td className="p-3 font-bold text-slate-700">{student.name}</td>
+                                                    <td className="p-3 text-center">
+                                                        <button 
+                                                            onClick={() => toggleAttendance(student.id, status)}
+                                                            className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors ${
+                                                                isPresent 
+                                                                ? 'bg-green-500 text-white shadow-md' 
+                                                                : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
+                                                            }`}
+                                                        >
+                                                            {isPresent ? 'HADIR' : 'TIDAK HADIR'}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            const Analisis = () => {
+                const reportCountByClub = useMemo(() => {
+                    const counts = {};
+                    reports.forEach(r => { counts[r.unit] = (counts[r.unit] || 0) + 1; });
+                    return counts;
+                }, [reports]);
+
+                return (
+                     <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.PieChart /> Analisis Data Laporan</h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-center">
+                                <div className="text-3xl font-black text-blue-600 mb-1">{reports.length}</div>
+                                <div className="text-[10px] font-bold text-blue-800 uppercase tracking-widest">Jumlah Laporan</div>
+                            </div>
+                            <div className="bg-green-50 p-6 rounded-2xl border border-green-100 text-center">
+                                <div className="text-3xl font-black text-green-600 mb-1">{students.length}</div>
+                                <div className="text-[10px] font-bold text-green-800 uppercase tracking-widest">Jumlah Murid</div>
+                            </div>
+                            <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100 text-center">
+                                <div className="text-3xl font-black text-purple-600 mb-1">{activities.filter(a=>a!=='MENGAMBIL DATA...').length}</div>
+                                <div className="text-[10px] font-bold text-purple-800 uppercase tracking-widest">Jumlah Unit/Kelab</div>
+                            </div>
+                            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 text-center">
+                                <div className="text-3xl font-black text-amber-600 mb-1">{teachers.length}</div>
+                                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-widest">Jumlah Guru</div>
+                            </div>
+                        </div>
+                        <h3 className="font-bold text-slate-700 text-sm mb-4 uppercase tracking-wider border-b pb-2">Laporan Mengikut Unit</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {Object.entries(reportCountByClub).sort((a,b)=>b[1]-a[1]).map(([club, count]) => (
+                                <div key={club} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                    <span className="text-xs font-bold text-slate-600">{club}</span>
+                                    <span className="bg-blue-600 text-white text-xs font-black px-2 py-1 rounded-md">{count}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            const Tetapan = () => {
+                const [linkMurid, setLinkMurid] = useState(csvLinkMurid);
+                const [linkGuru, setLinkGuru] = useState(csvLinkGuru);
+                const [isSaving, setIsSaving] = useState(false);
+                const handleSave = async (e) => {
+                    e.preventDefault();
+                    if (!user) return;
+                    setIsSaving(true);
+                    try {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config'), { csvLinkMurid: linkMurid, csvLinkGuru: linkGuru, updatedAt: Date.now() });
+                        showToast('Tetapan pautan berjaya disimpan!');
+                    } catch (err) {
+                        showToast('Ralat menyimpan tetapan.');
+                    } finally {
+                        setIsSaving(false);
+                    }
+                };
+                return (
+                    <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in duration-500">
+                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2"><Icons.Settings /> Tetapan Pautan Google Sheets</h2>
+                        <form onSubmit={handleSave} className="space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Pautan CSV Murid</label>
+                                <input type="url" required className="w-full p-4 border rounded-xl bg-slate-50 text-sm font-medium outline-none focus:bg-white transition" value={linkMurid} onChange={e => setLinkMurid(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Pautan CSV Guru</label>
+                                <input type="url" required className="w-full p-4 border rounded-xl bg-slate-50 text-sm font-medium outline-none focus:bg-white transition" value={linkGuru} onChange={e => setLinkGuru(e.target.value)} />
+                            </div>
+                            <button type="submit" disabled={isSaving} className="w-full py-4 bg-blue-600 text-white font-black rounded-xl shadow-lg hover:bg-blue-700 transition uppercase tracking-widest text-xs">
+                                {isSaving ? 'Menyimpan...' : 'Simpan Konfigurasi'}
+                            </button>
+                        </form>
+                    </div>
+                );
+            };
+
+            if (isLoading) {
+                return (
+                    <div className="h-screen flex items-center justify-center bg-slate-900 text-white font-bold text-center p-4">
+                        <div>
+                            <div className="text-4xl mb-4 animate-bounce">🚀</div>
+                            <p className="tracking-widest uppercase text-xs font-black">Memuatkan Aplikasi...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-slate-100 pb-20 md:pb-0 md:pl-64 print:pl-0 print:bg-white print:pb-0">
+                    {toast && (
+                        <div className="fixed top-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl z-50 animate-in slide-in-from-top-4 font-bold text-sm print:hidden">
+                            {toast}
+                        </div>
+                    )}
+                    
+                    {/* SIDEBAR DESKTOP */}
+                    <div className="hidden md:flex flex-col w-64 bg-slate-900 fixed left-0 top-0 bottom-0 text-white shadow-2xl z-40 print:hidden">
+                        <div className="p-6 text-center border-b border-slate-800">
+                            <h1 className="text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">eKOKU</h1>
+                            <p className="text-[10px] tracking-[0.3em] opacity-50 mt-1 uppercase">SKPK Miri</p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
+                            <button onClick={()=>setCurrentView('laporan_baru')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentView === 'laporan_baru' ? 'bg-blue-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Icons.PenTool /> Laporan Baru</button>
+                            <button onClick={()=>setCurrentView('kehadiran')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentView === 'kehadiran' ? 'bg-blue-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Icons.Users /> Kehadiran</button>
+                            <button onClick={()=>setCurrentView('rekod_laporan')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentView === 'rekod_laporan' ? 'bg-blue-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Icons.Archive /> Arkib Laporan</button>
+                            <button onClick={()=>setCurrentView('analisis')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentView === 'analisis' ? 'bg-blue-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Icons.PieChart /> Analisis</button>
+                            <button onClick={()=>setCurrentView('tetapan')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${currentView === 'tetapan' ? 'bg-blue-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Icons.Settings /> Tetapan</button>
+                        </div>
+                        <div className="p-4 border-t border-slate-800">
+                            <div className="bg-slate-800 p-3 rounded-xl text-[10px] text-center text-slate-400 leading-tight">
+                                Sistem e-Pelaporan Kokurikulum Bersepadu
                             </div>
                         </div>
                     </div>
 
-                    {/* Kandungan Tab Dinamik */}
-                    <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-                        {activeTab === 'analisis' && <AnalisisView />}
-                        {activeTab === 'kehadiran' && (
-                            <div className="bg-white p-6 rounded-2xl border shadow-sm text-center py-20 text-slate-500 font-medium">
-                                <Icons.Users className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-                                Modul Kehadiran (Paparan Ringkas dalam demo)
-                                <p className="text-sm mt-2">Sila gunakan tab "Analisis & Cetakan" untuk melihat data sebenar.</p>
-                            </div>
-                        )}
-                        {activeTab === 'laporan' && (
-                            <div className="bg-white p-6 rounded-2xl border shadow-sm text-center py-20 text-slate-500 font-medium">
-                                <Icons.FileText className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-                                Modul Laporan (Paparan Ringkas dalam demo)
-                                <p className="text-sm mt-2">Sila gunakan tab "Analisis & Cetakan" untuk melihat data sebenar.</p>
-                            </div>
-                        )}
-                    </main>
+                    {/* BOTTOM NAV MOBILE */}
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 pb-safe z-40 print:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                        <button onClick={()=>setCurrentView('laporan_baru')} className={`flex flex-col items-center p-2 transition-colors ${currentView === 'laporan_baru' ? 'text-blue-600' : 'text-slate-400'}`}><Icons.PenTool /><span className="text-[10px] font-bold mt-1">Lapor</span></button>
+                        <button onClick={()=>setCurrentView('kehadiran')} className={`flex flex-col items-center p-2 transition-colors ${currentView === 'kehadiran' ? 'text-blue-600' : 'text-slate-400'}`}><Icons.Users /><span className="text-[10px] font-bold mt-1">Hadir</span></button>
+                        <button onClick={()=>setCurrentView('rekod_laporan')} className={`flex flex-col items-center p-2 transition-colors ${currentView === 'rekod_laporan' ? 'text-blue-600' : 'text-slate-400'}`}><Icons.Archive /><span className="text-[10px] font-bold mt-1">Arkib</span></button>
+                        <button onClick={()=>setCurrentView('analisis')} className={`flex flex-col items-center p-2 transition-colors ${currentView === 'analisis' ? 'text-blue-600' : 'text-slate-400'}`}><Icons.PieChart /><span className="text-[10px] font-bold mt-1">Data</span></button>
+                        <button onClick={()=>setCurrentView('tetapan')} className={`flex flex-col items-center p-2 transition-colors ${currentView === 'tetapan' ? 'text-blue-600' : 'text-slate-400'}`}><Icons.Settings /><span className="text-[10px] font-bold mt-1">Tetapan</span></button>
+                    </div>
+
+                    {/* MAIN CONTENT AREA */}
+                    <div className="p-4 md:p-8 max-w-6xl mx-auto print:p-0 print:max-w-none">
+                        {currentView === 'laporan_baru' && <LaporanForm />}
+                        {currentView === 'kehadiran' && <Kehadiran />}
+                        {currentView === 'rekod_laporan' && <RekodLaporan />}
+                        {currentView === 'analisis' && <Analisis />}
+                        {currentView === 'tetapan' && <Tetapan />}
+                    </div>
                 </div>
             );
-        };
+        }
 
-        // Render aplikasi ke DOM
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
