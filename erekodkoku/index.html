@@ -275,16 +275,49 @@
                 html2pdf().from(el).set(opt).save();
             };
             
+            // PEMBAIKAN 1: Pastikan Canvas sentiasa wujud dan tidak dihalang oleh isu skala
             useEffect(() => {
-                if (!isSigning || !canvasRef.current) return;
-                const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; let d = false;
-                const getP = (e) => { const r = c.getBoundingClientRect(); let cx = e.touches ? e.touches[0].clientX : e.clientX; let cy = e.touches ? e.touches[0].clientY : e.clientY; return { x: cx - r.left, y: cy - r.top }; };
-                const m = (e) => { if (!d) return; e.preventDefault(); const p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
-                const s = (e) => { e.preventDefault(); d = true; const p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
-                const eL = () => { d = false; ctx.closePath(); };
-                c.addEventListener('mousedown', s); c.addEventListener('mousemove', m); window.addEventListener('mouseup', eL);
-                c.addEventListener('touchstart', s, { passive: false }); c.addEventListener('touchmove', m, { passive: false }); c.addEventListener('touchend', eL);
-                return () => { c.removeEventListener('mousedown', s); c.removeEventListener('mousemove', m); window.removeEventListener('mouseup', eL); c.removeEventListener('touchstart', s); c.removeEventListener('touchmove', m); c.removeEventListener('touchend', eL); };
+                if (!isSigning) return;
+                let cleanupFn = null;
+                
+                const timer = setTimeout(() => {
+                    const c = canvasRef.current;
+                    if (!c) return;
+                    
+                    const ctx = c.getContext('2d'); 
+                    ctx.lineWidth = 3; 
+                    ctx.lineCap = 'round'; 
+                    ctx.strokeStyle = '#000'; 
+                    let d = false;
+                    
+                    const getP = (e) => { 
+                        const r = c.getBoundingClientRect(); 
+                        let cx = e.touches ? e.touches[0].clientX : e.clientX; 
+                        let cy = e.touches ? e.touches[0].clientY : e.clientY; 
+                        
+                        // PEMBAIKAN 2: Jika CSS membesarkan kanvas (w-full), kita tetapkan skala yang betul supaya garisan selari
+                        const scaleX = c.width / r.width;
+                        const scaleY = c.height / r.height;
+                        return { x: (cx - r.left) * scaleX, y: (cy - r.top) * scaleY }; 
+                    };
+                    
+                    const m = (e) => { if (!d) return; e.preventDefault(); const p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+                    const s = (e) => { e.preventDefault(); d = true; const p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+                    const eL = () => { d = false; ctx.closePath(); };
+                    
+                    c.addEventListener('mousedown', s); c.addEventListener('mousemove', m); window.addEventListener('mouseup', eL);
+                    c.addEventListener('touchstart', s, { passive: false }); c.addEventListener('touchmove', m, { passive: false }); c.addEventListener('touchend', eL);
+                    
+                    cleanupFn = () => { 
+                        c.removeEventListener('mousedown', s); c.removeEventListener('mousemove', m); window.removeEventListener('mouseup', eL); 
+                        c.removeEventListener('touchstart', s); c.removeEventListener('touchmove', m); c.removeEventListener('touchend', eL); 
+                    };
+                }, 100);
+
+                return () => { 
+                    clearTimeout(timer);
+                    if (cleanupFn) cleanupFn(); 
+                };
             }, [isSigning]);
 
             if (selected) {
@@ -468,7 +501,6 @@
                     </div>
                     <div className="space-y-2 border rounded-xl p-2 divide-y">
                         {filtered.length === 0 ? <p className="p-10 text-center text-slate-400 font-bold italic uppercase tracking-widest text-[10px]">Tiada data murid untuk unit ini...</p> : filtered.map(s => {
-                            // Cek sekiranya murid telah ditanda hadir melalui ID Baru (Nama) atau ID Lama (Baris)
                             const isPresent = att[s.id] === true || att[s.oldId] === true;
                             return (
                                 <div key={s.id} onClick={() => setAtt({...att, [s.id]: !isPresent, [s.oldId]: false})} className={`p-4 flex justify-between items-center cursor-pointer transition rounded-lg ${isPresent ? 'bg-green-50' : 'bg-red-50'}`}>
@@ -737,10 +769,6 @@
                 </div>
             );
         };
-
-        /* ==============================================================
-           KOMPONEN UTAMA APP
-           ============================================================== */
 
         function App() {
             const [user, setUser] = useState(null);
